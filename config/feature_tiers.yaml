@@ -1,0 +1,296 @@
+# Feature Tier Configuration
+# Defines subscription tiers, pricing, and feature access levels
+
+tiers:
+  free:
+    monthly_price: 0
+    annual_price: 0
+    description: "Basic trading session and stop hunt analysis"
+    features:
+      - session_analysis
+      - stop_hunt
+    max_assets: 3
+    max_timeframes: 3
+    api_calls_per_day: 100
+    historical_data_months: 1
+
+  basic:
+    monthly_price: 49
+    annual_price: 470  # ~20% discount
+    description: "Psychology, Fibonacci, and Sentiment analysis"
+    features:
+      - session_analysis
+      - stop_hunt
+      - market_psychology
+      - fibonacci_time
+      - sentiment
+    max_assets: 10
+    max_timeframes: 5
+    api_calls_per_day: 1000
+    historical_data_months: 6
+    support_level: "email"
+
+  professional:
+    monthly_price: 149
+    annual_price: 1430  # ~20% discount
+    description: "Advanced features: Chaos, Physics, Game Theory, Neural"
+    features:
+      - session_analysis
+      - stop_hunt
+      - market_psychology
+      - fibonacci_time
+      - sentiment
+      - chaos_theory
+      - social_physics
+      - game_theory
+      - neural_oscillations
+    max_assets: 50
+    max_timeframes: 10
+    api_calls_per_day: 10000
+    historical_data_months: 24
+    support_level: "priority_email"
+    includes:
+      - "Custom alerts"
+      - "Strategy backtesting"
+      - "Multi-timeframe analysis"
+
+  institutional:
+    monthly_price: 499
+    annual_price: 4790  # ~20% discount
+    description: "HFT, Order Flow, Quantum, and Institutional-grade features"
+    features:
+      - session_analysis
+      - stop_hunt
+      - market_psychology
+      - fibonacci_time
+      - sentiment
+      - chaos_theory
+      - social_physics
+      - game_theory
+      - neural_oscillations
+      - hft_scalping
+      - orderflow
+      - intracandle
+      - quantum_finance
+    max_assets: 200
+    max_timeframes: 20
+    api_calls_per_day: 100000
+    historical_data_months: 60
+    support_level: "dedicated_support"
+    includes:
+      - "Real-time tick data"
+      - "Custom feature development"
+      - "White-label options"
+      - "API access"
+      - "Webhook integrations"
+
+  elite:
+    monthly_price: 1999
+    annual_price: 19190  # ~20% discount
+    description: "All features unlocked including CNN patterns and Astro-finance"
+    features:
+      - session_analysis
+      - stop_hunt
+      - market_psychology
+      - fibonacci_time
+      - sentiment
+      - chaos_theory
+      - social_physics
+      - game_theory
+      - neural_oscillations
+      - hft_scalping
+      - orderflow
+      - intracandle
+      - quantum_finance
+      - image_patterns
+      - astro_finance
+      - lunar_cycles
+    max_assets: 1000
+    max_timeframes: 50
+    api_calls_per_day: 1000000
+    historical_data_months: 120
+    support_level: "24_7_dedicated"
+    includes:
+      - "Everything in Institutional"
+      - "GPU-accelerated processing"
+      - "Custom AI model training"
+      - "Dedicated infrastructure"
+      - "Research collaboration"
+      - "Alpha generation consulting"
+
+# Feature metadata
+feature_metadata:
+  session_analysis:
+    name: "Trading Session Analysis"
+    computational_cost: "low"
+    gpu_required: false
+    real_time: true
+    latency_ms: "<10"
+
+  stop_hunt:
+    name: "Stop Hunt Detection"
+    computational_cost: "low"
+    gpu_required: false
+    real_time: true
+    latency_ms: "<10"
+
+  market_psychology:
+    name: "Market Psychology"
+    computational_cost: "medium"
+    gpu_required: false
+    real_time: true
+    latency_ms: "<50"
+
+  fibonacci_time:
+    name: "Fibonacci Time Projections"
+    computational_cost: "medium"
+    gpu_required: false
+    real_time: true
+    latency_ms: "<50"
+
+  sentiment:
+    name: "Retail Sentiment Contrarian"
+    computational_cost: "low"
+    gpu_required: false
+    real_time: true
+    latency_ms: "<20"
+    external_api: true
+
+  chaos_theory:
+    name: "Chaos Theory & Fractals"
+    computational_cost: "high"
+    gpu_required: false
+    real_time: true
+    latency_ms: "<100"
+
+  social_physics:
+    name: "Social Physics Models"
+    computational_cost: "medium"
+    gpu_required: false
+    real_time: true
+    latency_ms: "<50"
+
+  game_theory:
+    name: "Game Theory Analytics"
+    computational_cost: "high"
+    gpu_required: false
+    real_time: true
+    latency_ms: "<100"
+
+  neural_oscillations:
+    name: "Neural Oscillation Analysis"
+    computational_cost: "high"
+    gpu_required: false
+    real_time: true
+    latency_ms: "<150"
+
+  hft_scalping:
+    name: "HFT Microstructure"
+    computational_cost: "very_high"
+    gpu_required: false
+    real_time: true
+    latency_ms: "<5"
+    requires_tick_data: true
+
+  orderflow:
+    name: "Order Flow & MM Detection"
+    computational_cost: "very_high"
+    gpu_required: false
+    real_time: true
+    latency_ms: "<10"
+    requires_tick_data: true
+
+  intracandle:
+    name: "Intra-Candle Dynamics"
+    computational_cost: "very_high"
+    gpu_required: false
+    real_time: true
+    latency_ms: "<10"
+    requires_tick_data: true
+
+  quantum_finance:
+    name: "Quantum Finance Models"
+    computational_cost: "very_high"
+    gpu_required: true
+    real_time: true
+    latency_ms: "<200"
+
+  image_patterns:
+    name: "CNN Pattern Recognition"
+    computational_cost: "very_high"
+    gpu_required: true
+    real_time: false
+    latency_ms: "<500"
+    model_type: "ResNet18"
+
+  astro_finance:
+    name: "Astro-Financial Analysis"
+    computational_cost: "medium"
+    gpu_required: false
+    real_time: true
+    latency_ms: "<100"
+    external_api: true
+
+  lunar_cycles:
+    name: "Lunar Cycle Analysis"
+    computational_cost: "low"
+    gpu_required: false
+    real_time: true
+    latency_ms: "<20"
+
+# Recommended combinations
+feature_bundles:
+  scalper_bundle:
+    name: "Scalper's Edge"
+    description: "Optimized for high-frequency scalping"
+    features:
+      - session_analysis
+      - stop_hunt
+      - hft_scalping
+      - orderflow
+      - intracandle
+    recommended_tier: "institutional"
+
+  swing_trader_bundle:
+    name: "Swing Trader Pro"
+    description: "Medium-term trend and reversal detection"
+    features:
+      - market_psychology
+      - fibonacci_time
+      - chaos_theory
+      - game_theory
+      - neural_oscillations
+    recommended_tier: "professional"
+
+  quant_bundle:
+    name: "Quantitative Analysis Suite"
+    description: "Advanced mathematical and statistical features"
+    features:
+      - chaos_theory
+      - social_physics
+      - quantum_finance
+      - neural_oscillations
+      - game_theory
+    recommended_tier: "institutional"
+
+  pattern_trader_bundle:
+    name: "Pattern Recognition Master"
+    description: "Visual and cycle-based pattern detection"
+    features:
+      - fibonacci_time
+      - image_patterns
+      - lunar_cycles
+      - astro_finance
+      - market_psychology
+    recommended_tier: "elite"
+
+  smart_money_bundle:
+    name: "Smart Money Tracker"
+    description: "Follow institutional and market maker activity"
+    features:
+      - stop_hunt
+      - orderflow
+      - sentiment
+      - game_theory
+      - intracandle
+    recommended_tier: "institutional"
