@@ -1,0 +1,51 @@
+services:  
+  unconventional-features:
+    build:
+      context: ./unconventional_features
+      dockerfile: Dockerfile
+    image: unconventional_features:latest
+    container_name: unconventional_features
+    restart: unless-stopped
+    environment:
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - FOREX_DB=${FOREX_DB}
+      - UNCONVENTIONAL_DB=${ML_DB}
+      - SERVER_ID=${SERVER_ID}
+      - TOTAL_SERVERS=4
+      - PARALLEL_WORKERS=6
+      - BATCH_SIZE=250000
+      - ASSET_LIST=ALL
+      - TIMEFRAME_LIST=ALL
+    networks:
+      - backend_network
+
+  ml-features:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ml_features_server_${SERVER_ID}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - POSTGRES_HOST=192.168.50.210
+      - POSTGRES_PORT=5021
+      - SERVER_ID=${SERVER_ID}
+      - TOTAL_SERVERS=4
+      - BATCH_SIZE=10000
+      - MAX_WORKERS=48
+    volumes:
+      - ./ml:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+    networks:
+      - llm-net
+    command: ["python", "-u", "features_extraction.py"]
+
+networks:
+  backend_network:
+    driver: bridge
+  llm-net:
+    driver: bridge
