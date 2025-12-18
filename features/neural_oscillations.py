@@ -107,15 +107,15 @@ def add_neural_oscillation_features(df: pl.DataFrame) -> pl.DataFrame:
     # Wave coherence (synchronization between bands)
     df = df.with_columns([
         # Delta-theta coherence (long-term alignment)
-        pl.corr("delta_trend", "theta_trend", ddof=0).rolling(50)
+        pl.corr("delta_trend", "theta_trend", ddof=0).rolling_mean(50)
         .alias("delta_theta_coherence"),
 
         # Alpha-beta coherence (medium-short alignment)
-        pl.corr("alpha_trend", "beta_trend", ddof=0).rolling(50)
+        pl.corr("alpha_trend", "beta_trend", ddof=0).rolling_mean(50)
         .alias("alpha_beta_coherence"),
 
         # Beta-gamma coherence (short-high frequency alignment)
-        pl.corr("beta_trend", "gamma_trend", ddof=0).rolling(20)
+        pl.corr("beta_trend", "gamma_trend", ddof=0).rolling_mean(20)
         .alias("beta_gamma_coherence"),
     ])
 
@@ -249,7 +249,7 @@ def add_brainwave_entropy_features(df: pl.DataFrame) -> pl.DataFrame:
             pl.col("close").rolling_mean(20).pct_change(),
             pl.col("close").rolling_mean(100).pct_change(),
             ddof=0
-        ).rolling(20).alias("phase_locking_value"),
+        ).rolling_mean(20).alias("phase_locking_value"),
 
         # Strong phase locking = coordinated movement
         (pl.col("phase_locking_value").abs() > 0.8).alias("strong_phase_locking"),

@@ -7,14 +7,43 @@ Full moons historically associated with increased volatility and reversal points
 import polars as pl
 import numpy as np
 from datetime import datetime, timedelta
-import ephem
+import logging
 
-def calculate_moon_phase(date):
-    """Calculate moon phase (0-1, where 0.5 is full moon)."""
-    observer = ephem.Observer()
-    observer.date = date
-    moon = ephem.Moon(observer)
-    return moon.phase / 100.0
+log = logging.getLogger(__name__)
+
+# Try to import ephem, fall back to mathematical approximation if unavailable
+try:
+    import ephem
+    EPHEM_AVAILABLE = True
+except ImportError:
+    EPHEM_AVAILABLE = False
+    log.warning("pyephem not installed. Using mathematical lunar phase approximation.")
+
+
+def calculate_moon_phase(date) -> float:
+    """
+    Calculate moon phase (0-1, where ~0.5 is full moon).
+    Uses ephem if available, otherwise a mathematical approximation.
+    """
+    if EPHEM_AVAILABLE:
+        observer = ephem.Observer()
+        observer.date = date
+        moon = ephem.Moon(observer)
+        return moon.phase / 100.0
+    else:
+        # Mathematical approximation of lunar phase
+        # Synodic month is approximately 29.53 days
+        # Reference new moon: January 6, 2000 at 18:14 UTC
+        if isinstance(date, datetime):
+            dt = date
+        else:
+            dt = datetime.fromisoformat(str(date))
+
+        reference = datetime(2000, 1, 6, 18, 14)
+        days_since = (dt - reference).total_seconds() / 86400
+        synodic_month = 29.530588853
+        phase = (days_since % synodic_month) / synodic_month
+        return phase
 
 def add_lunar_features(df: pl.DataFrame) -> pl.DataFrame:
     """Add lunar cycle features for trading analysis."""

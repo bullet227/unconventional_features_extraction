@@ -37,7 +37,9 @@ def add_game_theory_features(df: pl.DataFrame) -> pl.DataFrame:
 
         # Defection cascade (everyone rushing to exit)
         (pl.col("selling_pressure") > 7).alias("defection_cascade"),
+    ])
 
+    df = df.with_columns([
         # Cooperation breakdown (coordination failure imminent)
         (pl.col("coordination_index") < -0.5).alias("cooperation_breakdown"),
     ])
@@ -49,7 +51,7 @@ def add_game_theory_features(df: pl.DataFrame) -> pl.DataFrame:
         pl.col("close").rolling_std(20).alias("price_volatility"),
 
         # Volume stability (consistent volume = equilibrium)
-        pl.col("volume").rolling_std(20) / (pl.col("volume").rolling_mean(20) + 1)
+        (pl.col("volume").rolling_std(20) / (pl.col("volume").rolling_mean(20) + 1))
         .alias("volume_stability"),
     ])
 
@@ -68,7 +70,7 @@ def add_game_theory_features(df: pl.DataFrame) -> pl.DataFrame:
     # Options/futures markets are zero-sum
     df = df.with_columns([
         # Winner concentration (few big winners)
-        (pl.col("high") - pl.col("low")) / pl.col("close").alias("intraday_range_pct"),
+        ((pl.col("high") - pl.col("low")) / pl.col("close")).alias("intraday_range_pct"),
 
         # Loser concentration (trapped traders)
         ((pl.col("close") - pl.col("low")) / (pl.col("high") - pl.col("low") + 1e-8))
@@ -230,7 +232,9 @@ def add_game_theory_features(df: pl.DataFrame) -> pl.DataFrame:
     df = df.with_columns([
         # Bid-ask spread proxy (transaction cost)
         ((pl.col("high") - pl.col("low")) / pl.col("close")).alias("spread_proxy"),
+    ])
 
+    df = df.with_columns([
         # Liquidity quality (tight spread + high volume)
         (pl.col("volume") / (pl.col("spread_proxy") + 1e-8)).alias("liquidity_quality"),
     ])
