@@ -45,7 +45,9 @@ def add_quantum_features(df: pl.DataFrame) -> pl.DataFrame:
         # Duality ratio: wave vs particle dominance
         (pl.col("wave_component") / (pl.col("particle_component") + 1e-8))
         .alias("wave_particle_ratio"),
+    ])
 
+    df = df.with_columns([
         # Complementarity: high in one means low in other
         (1 / (1 + pl.col("wave_particle_ratio"))).alias("particle_probability"),
         (pl.col("wave_particle_ratio") / (1 + pl.col("wave_particle_ratio")))
@@ -66,7 +68,9 @@ def add_quantum_features(df: pl.DataFrame) -> pl.DataFrame:
         # Uncertainty product (should have a minimum value)
         (pl.col("price_uncertainty") * pl.col("momentum_uncertainty"))
         .alias("uncertainty_product"),
+    ])
 
+    df = df.with_columns([
         # When uncertainty is low, precision is high (good for trading)
         (1 / (pl.col("uncertainty_product") + 1e-8)).alias("precision_index"),
     ])
@@ -99,11 +103,11 @@ def add_quantum_features(df: pl.DataFrame) -> pl.DataFrame:
     df = df.with_columns([
         # Self-entanglement: current price with its own past
         pl.corr("close", pl.col("close").shift(20), ddof=0)
-        .rolling(10).alias("temporal_entanglement"),
+        .rolling_mean(10).alias("temporal_entanglement"),
 
         # Momentum entanglement
         pl.corr("returns", pl.col("returns").shift(10), ddof=0)
-        .rolling(10).alias("momentum_entanglement"),
+        .rolling_mean(10).alias("momentum_entanglement"),
     ])
 
     # Entanglement strength (persistent correlation)
@@ -130,7 +134,9 @@ def add_quantum_features(df: pl.DataFrame) -> pl.DataFrame:
         # Support barrier
         ((pl.col("close") - pl.col("support")) / pl.col("close"))
         .alias("support_barrier"),
+    ])
 
+    df = df.with_columns([
         # Tunneling probability (inverse of barrier height)
         (1 / (pl.col("resistance_barrier") + 0.01)).alias("upside_tunnel_prob"),
         (1 / (pl.col("support_barrier") + 0.01)).alias("downside_tunnel_prob"),
@@ -165,7 +171,9 @@ def add_quantum_features(df: pl.DataFrame) -> pl.DataFrame:
 
         # Decoherence: collapse to definite state
         (1 - pl.col("superposition_coherence")).alias("decoherence"),
+    ])
 
+    df = df.with_columns([
         # State collapse indicator (high decoherence = clear trend)
         (pl.col("decoherence") > 0.7).alias("state_collapsed"),
     ])
@@ -234,7 +242,7 @@ def add_quantum_field_theory_features(df: pl.DataFrame) -> pl.DataFrame:
 
         # Field coupling (how strongly price couples to volume)
         pl.corr("returns", pl.col("volume").pct_change(), ddof=0)
-        .rolling(20).alias("field_coupling"),
+        .rolling_mean(20).alias("field_coupling"),
     ])
 
     return df

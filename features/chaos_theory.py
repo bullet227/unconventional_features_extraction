@@ -57,13 +57,14 @@ def add_chaos_features(df: pl.DataFrame, embed_dim: int = 3, tau: int = 1) -> pl
         ])
     
     # Phase space metrics
+    phase_cols = [f"phase_{i}" for i in range(embed_dim)]
     df = df.with_columns([
         # Phase space velocity (rate of change in phase space)
-        sum([pl.col(f"phase_{i}").diff()**2 for i in range(embed_dim)])**0.5
+        pl.sum_horizontal([pl.col(c).diff()**2 for c in phase_cols]).sqrt()
         .alias("phase_velocity"),
-        
+
         # Phase space expansion rate
-        sum([pl.col(f"phase_{i}") for i in range(embed_dim)]).diff()
+        pl.sum_horizontal([pl.col(c) for c in phase_cols]).diff()
         .alias("phase_expansion"),
     ])
     
@@ -74,7 +75,7 @@ def add_chaos_features(df: pl.DataFrame, embed_dim: int = 3, tau: int = 1) -> pl
          pl.col("close").rolling_std(20) * 0.1).alias("price_recurrence"),
         
         # Pattern recurrence: similar price patterns
-        pl.corr("returns", pl.col("returns").shift(20)).rolling(10)
+        pl.corr("returns", pl.col("returns").shift(20)).rolling_mean(10)
         .alias("pattern_recurrence"),
     ])
     
@@ -95,9 +96,11 @@ def add_chaos_features(df: pl.DataFrame, embed_dim: int = 3, tau: int = 1) -> pl
         # Distance from multiple moving averages (attractors)
         ((pl.col("close") - pl.col("close").rolling_mean(10))**2 +
          (pl.col("close") - pl.col("close").rolling_mean(20))**2 +
-         (pl.col("close") - pl.col("close").rolling_mean(50))**2)**0.5
+         (pl.col("close") - pl.col("close").rolling_mean(50))**2).sqrt()
         .alias("attractor_distance"),
-        
+    ])
+
+    df = df.with_columns([
         # Attractor strength (inverse of distance)
         (1 / (pl.col("attractor_distance") + 1e-8)).alias("attractor_strength"),
     ])
@@ -129,10 +132,12 @@ def add_chaos_features(df: pl.DataFrame, embed_dim: int = 3, tau: int = 1) -> pl
     # Deterministic vs stochastic behavior
     df = df.with_columns([
         # Approximate entropy (regularity measure)
-        pl.col("returns").rolling_std(5) / 
-        (pl.col("returns").rolling_std(20) + 1e-8)
+        (pl.col("returns").rolling_std(5) /
+        (pl.col("returns").rolling_std(20) + 1e-8))
         .alias("approximate_entropy"),
-        
+    ])
+
+    df = df.with_columns([
         # Predictability index
         (1 - pl.col("approximate_entropy")).clip(0, 1).alias("predictability"),
     ])

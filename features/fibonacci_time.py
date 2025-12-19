@@ -13,38 +13,37 @@ FIB_NUMBERS = [1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610]
 
 def add_fibonacci_time_features(df: pl.DataFrame, lookback: int = 250) -> pl.DataFrame:
     """Add Fibonacci time-based features."""
-    
+
     # Find swing highs and lows
     df = df.with_columns([
         # Swing high: higher than N bars on each side
-        ((pl.col("high") == pl.col("high").rolling_max(5)) & 
-         (pl.col("high") == pl.col("high").shift(-5).rolling_max(5))).alias("is_swing_high"),
-        
-        # Swing low: lower than N bars on each side  
+        ((pl.col("high") == pl.col("high").rolling_max(5)) &
+         (pl.col("high").shift(-2) < pl.col("high"))).alias("is_swing_high"),
+
+        # Swing low: lower than N bars on each side
         ((pl.col("low") == pl.col("low").rolling_min(5)) &
-         (pl.col("low") == pl.col("low").shift(-5).rolling_min(5))).alias("is_swing_low"),
+         (pl.col("low").shift(-2) > pl.col("low"))).alias("is_swing_low"),
     ])
-    
-    # Calculate bars since last significant high/low
+
+    # Calculate bars since last significant high/low using cumulative approach
     df = df.with_columns([
-        # Bars since last swing high
-        pl.when(pl.col("is_swing_high"))
-        .then(0)
-        .otherwise(pl.arange(0, len(df)))
-        .alias("bars_since_high"),
-        
-        # Bars since last swing low
-        pl.when(pl.col("is_swing_low"))
-        .then(0)
-        .otherwise(pl.arange(0, len(df)))
-        .alias("bars_since_low"),
+        # Create row index
+        pl.lit(1).alias("_one"),
     ])
-    
-    # Forward fill to get cumulative count
+
+    # Bars since swing high: cumulative count that resets on swing high
     df = df.with_columns([
-        pl.col("bars_since_high").cumsum().over(pl.col("is_swing_high").cumsum()).alias("bars_since_high"),
-        pl.col("bars_since_low").cumsum().over(pl.col("is_swing_low").cumsum()).alias("bars_since_low"),
+        pl.col("is_swing_high").cast(pl.Int32).cum_sum().alias("_high_group"),
+        pl.col("is_swing_low").cast(pl.Int32).cum_sum().alias("_low_group"),
     ])
+
+    df = df.with_columns([
+        pl.col("_one").cum_sum().over("_high_group").alias("bars_since_high"),
+        pl.col("_one").cum_sum().over("_low_group").alias("bars_since_low"),
+    ])
+
+    # Clean up temp columns
+    df = df.drop(["_one", "_high_group", "_low_group"])
     
     # Check if current bar is at Fibonacci time interval
     for fib_num in FIB_NUMBERS[:10]:  # Use first 10 Fibonacci numbers

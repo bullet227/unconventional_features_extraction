@@ -1,25 +1,50 @@
 # features/image_features.py
-import cv2, numpy as np, torch
+"""
+CNN-based candlestick pattern recognition using ResNet18.
+Requires PyTorch, torchvision, and OpenCV.
+"""
+import numpy as np
 import polars as pl
-from torchvision.models import resnet18, ResNet18_Weights
-from torchvision import transforms
 import warnings
+import logging
+
+log = logging.getLogger(__name__)
 warnings.filterwarnings('ignore')
 
-# Use lightweight model and extract features before final layer
-_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-_base_model = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1).to(_device).eval()
-# Remove final classification layer to get 512-dim features
-_model = torch.nn.Sequential(*list(_base_model.children())[:-1])
+# Try to import GPU/CV dependencies
+try:
+    import cv2
+    import torch
+    from torchvision.models import resnet18, ResNet18_Weights
+    from torchvision import transforms
 
-_tf = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Resize((224, 224)),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
+    CV_AVAILABLE = True
+
+    # Use lightweight model and extract features before final layer
+    _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    _base_model = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1).to(_device).eval()
+    # Remove final classification layer to get 512-dim features
+    _model = torch.nn.Sequential(*list(_base_model.children())[:-1])
+
+    _tf = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Resize((224, 224)),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+
+except ImportError as e:
+    CV_AVAILABLE = False
+    _device = None
+    _model = None
+    _tf = None
+    log.warning(f"Image features unavailable (missing dependencies: {e}). "
+                "Install with: pip install torch torchvision opencv-python")
 
 def create_candle_pattern_image(ohlc_window, img_size=(224, 224)):
     """Create a visual representation of candlestick patterns."""
+    if not CV_AVAILABLE:
+        return np.zeros((img_size[0], img_size[1], 3), dtype=np.uint8)
+
     img = np.zeros((img_size[0], img_size[1], 3), dtype=np.uint8)
     
     if len(ohlc_window) == 0:
@@ -60,27 +85,36 @@ def create_candle_pattern_image(ohlc_window, img_size=(224, 224)):
     return img
 
 def candle_image_to_vector(df: pl.DataFrame, window_size: int = 20):
-    """Convert candlestick patterns to feature vectors using CNN."""
+    """
+    Convert candlestick patterns to feature vectors using CNN.
+    Returns list of 512-dim vectors (zeros if GPU/CV unavailable).
+    """
+    if not CV_AVAILABLE:
+        log.warning("Returning zero vectors - image dependencies not installed")
+        return [np.zeros(512) for _ in range(len(df))]
+
+    import torch  # Import here since we verified it's available
+
     if isinstance(df, pl.DataFrame):
         df = df.to_pandas()
-    
+
     vecs = []
-    
+
     with torch.no_grad():
         for i in range(len(df)):
             # Get window of candles (current + previous)
             start_idx = max(0, i - window_size + 1)
             window = df.iloc[start_idx:i+1][["open", "high", "low", "close"]].values
-            
+
             # Create pattern image
             img = create_candle_pattern_image(window)
-            
+
             # Convert to tensor and extract features
             img_tensor = _tf(img).unsqueeze(0).to(_device)
             features = _model(img_tensor)
-            
+
             # Flatten to 512-dim vector
             vec = features.squeeze().cpu().numpy()
             vecs.append(vec)
-    
+
     return vecs

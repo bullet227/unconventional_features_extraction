@@ -10,6 +10,7 @@ from tqdm import tqdm
 import prometheus_client as prom
 import torch
 import pyephem
+from features.session_features import add_session_stats
 from features.chaos_theory import add_chaos_features
 from features.social_physics import add_social_physics_features
 from features.lunar_cycles import add_lunar_features
@@ -18,9 +19,13 @@ from features.market_psychology import add_market_psychology_features
 from features.fibonacci_time import add_fibonacci_time_features
 from features.stop_hunt import stop_hunt_metrics
 from features.sentiment_contra import retail_sentiment_features
-from features.orderflow_mm_detection import OrderFlowAnalyzer
-from features.intracandle_dynamics import analyze_candle_formation, IntraCandleState
+from features.orderflow_mm_detection import OrderFlowAnalyzer, add_orderflow_features
+from features.intracandle_dynamics import analyze_candle_formation, IntraCandleState, add_intracandle_features
 from features.hft_scalping import add_hft_scalping_features, create_hft_features_realtime
+from features.quantum_finance import add_quantum_features, add_quantum_field_theory_features
+from features.game_theory import add_game_theory_features
+from features.neural_oscillations import add_neural_oscillation_features
+from features.astro_finance import add_astro_features
 
 # Logging (JSON)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -85,17 +90,40 @@ def _stream(table: str):
 def _enrich(df: pd.DataFrame, asset: str, tf: str) -> pd.DataFrame:
     try:
         pl_df = pl.from_pandas(df)
+
+        # Tier 1: Foundation Features (Session, Stop Hunt, Sentiment)
         pl_df = add_session_stats(pl_df)
         pl_df = stop_hunt_metrics(pl_df)
         pl_df = retail_sentiment_features(pl_df, asset)
-        pl_df = add_chaos_features(pl_df)
-        pl_df = add_social_physics_features(pl_df)
-        pl_df = add_lunar_features(pl_df)
+
+        # Tier 2: Behavioral/Technical (Psychology, Fibonacci, Lunar)
         pl_df = add_market_psychology_features(pl_df)
         pl_df = add_fibonacci_time_features(pl_df)
-        pl_df = add_hft_scalping_features(pl_df)  # Assumes tick_data handled
-        vecs = candle_image_to_vector(pl_df)  # GPU-accelerated
-        pl_df = pl_df.with_columns(pl.Series("img_vec", vecs))
+        pl_df = add_lunar_features(pl_df)
+
+        # Tier 3: Advanced Mathematical (Chaos, Social Physics, Game Theory)
+        pl_df = add_chaos_features(pl_df)
+        pl_df = add_social_physics_features(pl_df)
+        pl_df = add_game_theory_features(pl_df)
+
+        # Tier 4: Quantum & Neural (Quantum Finance, Neural Oscillations)
+        pl_df = add_quantum_features(pl_df)
+        pl_df = add_quantum_field_theory_features(pl_df)
+        pl_df = add_neural_oscillation_features(pl_df)
+
+        # Tier 5: Microstructure (HFT, Order Flow, Intracandle)
+        pl_df = add_hft_scalping_features(pl_df)
+        pl_df = add_orderflow_features(pl_df)
+        pl_df = add_intracandle_features(pl_df)
+
+        # Tier 5: Esoteric (Astro Finance, Image Features)
+        pl_df = add_astro_features(pl_df)
+
+        # GPU-accelerated image feature extraction
+        if os.getenv("ENABLE_IMAGE_FEATURES", "false").lower() == "true":
+            vecs = candle_image_to_vector(pl_df)
+            pl_df = pl_df.with_columns(pl.Series("img_vec", vecs))
+
         gauge_processed.inc(len(df))
         return pl_df.to_pandas()
     except Exception as e:

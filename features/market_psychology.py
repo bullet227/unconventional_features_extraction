@@ -114,7 +114,7 @@ def add_market_psychology_features(df: pl.DataFrame, lookback: int = 20) -> pl.D
         
         # Underreaction: small moves in trending market
         ((pl.col("close").pct_change().abs() < 0.002) &
-         (pl.col("close").rolling_mean(5) - pl.col("close").rolling_mean(20)).abs() > 
+         ((pl.col("close").rolling_mean(5) - pl.col("close").rolling_mean(20)).abs() >
           pl.col("close") * 0.005))
         .alias("underreaction"),
     ])
@@ -123,7 +123,7 @@ def add_market_psychology_features(df: pl.DataFrame, lookback: int = 20) -> pl.D
     df = df.with_columns([
         # High volatility + no clear trend = confusion
         ((pl.col("close").rolling_std(lookback) > pl.col("close").rolling_std(lookback*3) * 1.5) &
-         (pl.col("close").rolling_mean(5) - pl.col("close").rolling_mean(20)).abs() < 
+         ((pl.col("close").rolling_mean(5) - pl.col("close").rolling_mean(20)).abs() <
           pl.col("close") * 0.002))
         .alias("market_confusion"),
         

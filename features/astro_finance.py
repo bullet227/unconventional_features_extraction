@@ -7,29 +7,81 @@ Based on research showing statistical correlations between celestial events and 
 import polars as pl
 import numpy as np
 from datetime import datetime, timedelta
-import ephem
+import logging
+
+log = logging.getLogger(__name__)
+
+# Try to import ephem, provide fallback if unavailable
+try:
+    import ephem
+    EPHEM_AVAILABLE = True
+except ImportError:
+    EPHEM_AVAILABLE = False
+    log.warning("pyephem not installed. Astro features will use simplified approximations.")
 
 def calculate_planetary_positions(date) -> dict:
-    """Calculate positions of major planets."""
-    observer = ephem.Observer()
-    observer.date = date
+    """
+    Calculate positions of major planets.
+    Uses ephem if available, otherwise mathematical approximations.
+    """
+    if EPHEM_AVAILABLE:
+        observer = ephem.Observer()
+        observer.date = date
 
-    positions = {}
-    planets = {
-        'sun': ephem.Sun(),
-        'mercury': ephem.Mercury(),
-        'venus': ephem.Venus(),
-        'mars': ephem.Mars(),
-        'jupiter': ephem.Jupiter(),
-        'saturn': ephem.Saturn(),
-    }
+        positions = {}
+        planets = {
+            'sun': ephem.Sun(),
+            'mercury': ephem.Mercury(),
+            'venus': ephem.Venus(),
+            'mars': ephem.Mars(),
+            'jupiter': ephem.Jupiter(),
+            'saturn': ephem.Saturn(),
+        }
 
-    for name, planet in planets.items():
-        planet.compute(observer)
-        # Get ecliptic longitude (0-360 degrees)
-        positions[name] = float(planet.hlon) * 180 / np.pi
+        for name, planet in planets.items():
+            planet.compute(observer)
+            # Get ecliptic longitude (0-360 degrees)
+            positions[name] = float(planet.hlon) * 180 / np.pi
 
-    return positions
+        return positions
+    else:
+        # Simplified approximations based on orbital periods
+        # Reference date: J2000.0 (January 1, 2000, 12:00 TT)
+        if isinstance(date, datetime):
+            dt = date
+        else:
+            dt = datetime.fromisoformat(str(date))
+
+        j2000 = datetime(2000, 1, 1, 12, 0)
+        days_since_j2000 = (dt - j2000).total_seconds() / 86400
+
+        # Orbital periods in days (approximate)
+        orbital_periods = {
+            'sun': 365.25,      # Earth year
+            'mercury': 87.97,
+            'venus': 224.7,
+            'mars': 687.0,
+            'jupiter': 4332.59,
+            'saturn': 10759.22,
+        }
+
+        # Starting longitudes at J2000.0 (approximate)
+        j2000_longitudes = {
+            'sun': 280.46,
+            'mercury': 252.25,
+            'venus': 181.98,
+            'mars': 355.43,
+            'jupiter': 34.40,
+            'saturn': 50.08,
+        }
+
+        positions = {}
+        for planet, period in orbital_periods.items():
+            # Simple linear approximation (ignores elliptical orbits)
+            position = (j2000_longitudes[planet] + (360 * days_since_j2000 / period)) % 360
+            positions[planet] = position
+
+        return positions
 
 def calculate_aspects(pos1: float, pos2: float) -> dict:
     """
@@ -192,20 +244,37 @@ def add_eclipse_features(df: pl.DataFrame) -> pl.DataFrame:
         if isinstance(dt, pl.datatypes.Datetime):
             dt = dt.to_python()
 
-        # Check for eclipse proximity (within ±14 days)
-        # This is simplified; actual eclipse calculation requires detailed ephemeris
-        observer = ephem.Observer()
-        observer.date = dt
+        if EPHEM_AVAILABLE:
+            # Check for eclipse proximity (within ±14 days)
+            # This is simplified; actual eclipse calculation requires detailed ephemeris
+            observer = ephem.Observer()
+            observer.date = dt
 
-        sun = ephem.Sun(observer)
-        moon = ephem.Moon(observer)
+            sun = ephem.Sun(observer)
+            moon = ephem.Moon(observer)
 
-        # Eclipses occur when sun and moon are aligned (same longitude)
-        sun_lon = float(sun.hlon) * 180 / np.pi
-        moon_lon = float(moon.hlon) * 180 / np.pi
+            # Eclipses occur when sun and moon are aligned (same longitude)
+            sun_lon = float(sun.hlon) * 180 / np.pi
+            moon_lon = float(moon.hlon) * 180 / np.pi
 
-        alignment = abs(sun_lon - moon_lon) % 360
-        alignment = min(alignment, 360 - alignment)
+            alignment = abs(sun_lon - moon_lon) % 360
+            alignment = min(alignment, 360 - alignment)
+        else:
+            # Simplified approximation using lunar phase
+            # Eclipses happen near new moon (solar) or full moon (lunar)
+            if isinstance(dt, datetime):
+                dt_obj = dt
+            else:
+                dt_obj = datetime.fromisoformat(str(dt))
+
+            # Calculate approximate lunar phase
+            reference = datetime(2000, 1, 6, 18, 14)
+            days_since = (dt_obj - reference).total_seconds() / 86400
+            synodic_month = 29.530588853
+            phase = (days_since % synodic_month) / synodic_month
+
+            # Convert phase to alignment (0 or 0.5 = eclipse possible)
+            alignment = min(phase, abs(phase - 0.5), abs(phase - 1.0)) * 360
 
         eclipse_data.append({
             'eclipse_proximity': alignment < 15,  # Within eclipse zone

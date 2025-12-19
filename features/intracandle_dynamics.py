@@ -97,30 +97,30 @@ def add_intracandle_features(df: pl.DataFrame) -> pl.DataFrame:
     # Formation patterns
     df = df.with_columns([
         # Candle body position within range
-        ((pl.col("open") + pl.col("close")) / 2 - pl.col("low")) / 
-        (pl.col("high") - pl.col("low") + 0.0001)
+        (((pl.col("open") + pl.col("close")) / 2 - pl.col("low")) /
+        (pl.col("high") - pl.col("low") + 0.0001))
         .alias("body_position"),
-        
+
         # Body to range ratio
-        (pl.col("close") - pl.col("open")).abs() / 
-        (pl.col("high") - pl.col("low") + 0.0001)
+        ((pl.col("close") - pl.col("open")).abs() /
+        (pl.col("high") - pl.col("low") + 0.0001))
         .alias("body_range_ratio"),
     ])
     
     # Wick dynamics
     df = df.with_columns([
         # Upper wick momentum (large upper wick = selling pressure)
-        (pl.col("high") - pl.max_horizontal([pl.col("open"), pl.col("close")])) / 
-        pl.col("close") * 100
+        ((pl.col("high") - pl.max_horizontal([pl.col("open"), pl.col("close")])) /
+        pl.col("close") * 100)
         .alias("upper_wick_pct"),
-        
+
         # Lower wick momentum (large lower wick = buying pressure)
-        (pl.min_horizontal([pl.col("open"), pl.col("close")]) - pl.col("low")) / 
-        pl.col("close") * 100
+        ((pl.min_horizontal([pl.col("open"), pl.col("close")]) - pl.col("low")) /
+        pl.col("close") * 100)
         .alias("lower_wick_pct"),
-        
+
         # Wick ratio (upper vs lower dominance)
-        ((pl.col("high") - pl.max_horizontal([pl.col("open"), pl.col("close")])) / 
+        ((pl.col("high") - pl.max_horizontal([pl.col("open"), pl.col("close")])) /
          (pl.min_horizontal([pl.col("open"), pl.col("close")]) - pl.col("low") + 0.0001))
         .alias("wick_ratio"),
     ])

@@ -80,16 +80,21 @@ def add_hft_scalping_features(df: pl.DataFrame, tick_data: Dict = None) -> pl.Da
         aggregator = TickAggregator()
         # Process tick data here
     
-    # Microstructure features
+    # Microstructure features (derived from candle data as proxy for tick-level)
     df = df.with_columns([
-        # Tick-based momentum (requires tick data)
-        pl.lit(0.0).alias("tick_momentum"),  # Placeholder
-        
-        # Micro-trend detection (from 5-second candles)
-        pl.lit(0.0).alias("micro_trend"),  # Placeholder
-        
-        # Order flow imbalance
-        pl.lit(0.0).alias("order_flow_imbalance"),  # Placeholder
+        # Tick-based momentum proxy: direction and strength of close relative to OHLC
+        ((pl.col("close") - pl.col("open")) / (pl.col("high") - pl.col("low") + 1e-8))
+        .alias("tick_momentum"),
+
+        # Micro-trend proxy: short-term price momentum
+        (pl.col("close") - pl.col("close").shift(3)).alias("micro_trend"),
+
+        # Order flow imbalance proxy: estimated from candle structure
+        # Bullish candle with close near high = buying pressure
+        # Bearish candle with close near low = selling pressure
+        ((pl.col("close") - pl.col("low")) - (pl.col("high") - pl.col("close"))) /
+        (pl.col("high") - pl.col("low") + 1e-8)
+        .alias("order_flow_imbalance"),
     ])
     
     # Price action during candle formation
@@ -112,7 +117,7 @@ def add_hft_scalping_features(df: pl.DataFrame, tick_data: Dict = None) -> pl.Da
         pl.col("volume").diff().alias("volume_acceleration"),
         
         # Volume-price correlation (strong moves have aligned volume)
-        pl.corr("volume", "close").rolling(5).alias("volume_price_correlation"),
+        pl.corr("volume", "close").rolling_mean(5).alias("volume_price_correlation"),
     ])
     
     # Momentum burst detection
@@ -165,13 +170,13 @@ def add_hft_scalping_features(df: pl.DataFrame, tick_data: Dict = None) -> pl.Da
     # Market maker activity detection
     df = df.with_columns([
         # Narrow range with high volume (accumulation)
-        ((pl.col("high") - pl.col("low")) < pl.col("close") * 0.0005) & 
-        (pl.col("volume") > pl.col("volume").rolling_mean(20) * 1.5)
+        (((pl.col("high") - pl.col("low")) < pl.col("close") * 0.0005) &
+        (pl.col("volume") > pl.col("volume").rolling_mean(20) * 1.5))
         .alias("mm_accumulation"),
-        
+
         # Range expansion with volume (distribution)
-        ((pl.col("high") - pl.col("low")) > pl.col("close").rolling_std(20) * 2) & 
-        (pl.col("volume") > pl.col("volume").rolling_mean(20) * 2)
+        (((pl.col("high") - pl.col("low")) > pl.col("close").rolling_std(20) * 2) &
+        (pl.col("volume") > pl.col("volume").rolling_mean(20) * 2))
         .alias("mm_distribution"),
     ])
     

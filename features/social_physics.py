@@ -88,7 +88,7 @@ def add_social_physics_features(df: pl.DataFrame, lookback: int = 20) -> pl.Data
     # Crowd coherence (herd behavior strength)
     df = df.with_columns([
         # Price-volume correlation as coherence measure
-        pl.corr("price_velocity", "market_mass").rolling(lookback).alias("crowd_coherence"),
+        pl.corr("price_velocity", "market_mass").rolling_mean(lookback).alias("crowd_coherence"),
         
         # Synchronization index (how aligned are market forces)
         (pl.col("market_force").rolling_std(lookback) / 
@@ -99,9 +99,11 @@ def add_social_physics_features(df: pl.DataFrame, lookback: int = 20) -> pl.Data
     df = df.with_columns([
         # Energy stored in price compression
         (pl.col("price_compression") * pl.col("market_mass")).alias("potential_energy"),
-        
+    ])
+
+    df = df.with_columns([
         # Total mechanical energy
         (pl.col("kinetic_energy") + pl.col("potential_energy")).alias("total_energy"),
     ])
-    
+
     return df

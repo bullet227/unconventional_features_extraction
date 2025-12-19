@@ -275,7 +275,7 @@ def add_orderflow_features(df: pl.DataFrame, book_data: Optional[List[OrderBookS
         .alias("large_trade"),
         
         # Cumulative delta
-        ((pl.col("est_buy_volume") - pl.col("est_sell_volume"))).cumsum()
+        ((pl.col("est_buy_volume") - pl.col("est_sell_volume"))).cum_sum()
         .alias("cumulative_delta"),
     ])
     
@@ -296,13 +296,13 @@ def add_orderflow_features(df: pl.DataFrame, book_data: Optional[List[OrderBookS
     df = df.with_columns([
         # Buying absorption
         ((pl.col("volume") > pl.col("volume").rolling_mean(20) * 2) &
-         (pl.col("close") - pl.col("open")).abs() < pl.col("close").rolling_std(20) * 0.5 &
+         ((pl.col("close") - pl.col("open")).abs() < pl.col("close").rolling_std(20) * 0.5) &
          (pl.col("close") < pl.col("open")))
         .alias("buying_absorption"),
-        
-        # Selling absorption  
+
+        # Selling absorption
         ((pl.col("volume") > pl.col("volume").rolling_mean(20) * 2) &
-         (pl.col("close") - pl.col("open")).abs() < pl.col("close").rolling_std(20) * 0.5 &
+         ((pl.col("close") - pl.col("open")).abs() < pl.col("close").rolling_std(20) * 0.5) &
          (pl.col("close") > pl.col("open")))
         .alias("selling_absorption"),
     ])
