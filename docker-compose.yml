@@ -1,51 +1,191 @@
-services:  
-  unconventional-features:
-    build:
-      context: ./unconventional_features
-      dockerfile: Dockerfile
-    image: unconventional_features:latest
-    container_name: unconventional_features
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # PostgreSQL Database for Forex Data and Features
+  # ==========================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: forex_postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_HOST=${POSTGRES_HOST}
-      - POSTGRES_PORT=${POSTGRES_PORT}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - FOREX_DB=${FOREX_DB}
-      - UNCONVENTIONAL_DB=${ML_DB}
-      - SERVER_ID=${SERVER_ID}
-      - TOTAL_SERVERS=4
-      - PARALLEL_WORKERS=6
-      - BATCH_SIZE=250000
-      - ASSET_LIST=ALL
-      - TIMEFRAME_LIST=ALL
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forex_ml_2024}
+      POSTGRES_MULTIPLE_DATABASES: forex_trading_data,unconventional_features
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
     networks:
-      - backend_network
+      - forex_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  ml-features:
+  # ==========================================================================
+  # ML Pipeline Service - Main Application
+  # ==========================================================================
+  ml-pipeline:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ml_features_server_${SERVER_ID}
+    image: forex-ml-pipeline:latest
+    container_name: forex_ml_pipeline
     restart: unless-stopped
-    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
-      - POSTGRES_HOST=192.168.50.210
-      - POSTGRES_PORT=5021
-      - SERVER_ID=${SERVER_ID}
-      - TOTAL_SERVERS=4
-      - BATCH_SIZE=10000
-      - MAX_WORKERS=48
+      # Database configuration
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forex_ml_2024}
+      FOREX_DB: ${FOREX_DB:-forex_trading_data}
+      UNCONVENTIONAL_DB: ${UNCONVENTIONAL_DB:-unconventional_features}
+      # Pipeline configuration
+      BATCH_SIZE: ${BATCH_SIZE:-250000}
+      PARALLEL_WORKERS: ${PARALLEL_WORKERS:-4}
+      ENABLE_IMAGE_FEATURES: ${ENABLE_IMAGE_FEATURES:-false}
+      ENABLE_PROMETHEUS: ${ENABLE_PROMETHEUS:-false}
+      # Model configuration
+      MODEL_TYPE: ${MODEL_TYPE:-xgboost}
+      N_SPLITS: ${N_SPLITS:-5}
+      MAX_FEATURES: ${MAX_FEATURES:-100}
+      # Asset/timeframe configuration
+      ASSET_LIST: ${ASSET_LIST:-EURUSD,GBPUSD,USDJPY}
+      TIMEFRAME_LIST: ${TIMEFRAME_LIST:-H1,H4,D}
     volumes:
-      - ./ml:/app/data
+      - ./data:/app/data
       - ./models:/app/models
+      - ./reports:/app/reports
       - ./logs:/app/logs
     networks:
-      - llm-net
-    command: ["python", "-u", "features_extraction.py"]
+      - forex_network
+    # Run with sample data by default, override with docker-compose run
+    command: ["python", "ml_pipeline/run_pipeline.py", "--sample", "--output", "/app/reports"]
 
+  # ==========================================================================
+  # Feature Extraction ETL Service
+  # ==========================================================================
+  feature-etl:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: forex-ml-pipeline:latest
+    container_name: forex_feature_etl
+    profiles:
+      - etl
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forex_ml_2024}
+      FOREX_DB: ${FOREX_DB:-forex_trading_data}
+      UNCONVENTIONAL_DB: ${UNCONVENTIONAL_DB:-unconventional_features}
+      BATCH_SIZE: ${BATCH_SIZE:-250000}
+      PARALLEL_WORKERS: ${PARALLEL_WORKERS:-8}
+      ASSET_LIST: ${ASSET_LIST:-ALL}
+      TIMEFRAME_LIST: ${TIMEFRAME_LIST:-ALL}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - forex_network
+    command: ["python", "unconventional_features.py"]
+
+  # ==========================================================================
+  # Interactive Development Container
+  # ==========================================================================
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: forex-ml-pipeline:latest
+    container_name: forex_ml_dev
+    profiles:
+      - dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forex_ml_2024}
+      FOREX_DB: ${FOREX_DB:-forex_trading_data}
+      UNCONVENTIONAL_DB: ${UNCONVENTIONAL_DB:-unconventional_features}
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./reports:/app/reports
+    networks:
+      - forex_network
+    stdin_open: true
+    tty: true
+    command: ["python", "-i"]
+
+  # ==========================================================================
+  # Prometheus Metrics (Optional)
+  # ==========================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: forex_prometheus
+    profiles:
+      - monitoring
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - forex_network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+
+  # ==========================================================================
+  # Grafana Dashboard (Optional)
+  # ==========================================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: forex_grafana
+    profiles:
+      - monitoring
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - forex_network
+
+# ==========================================================================
+# Networks
+# ==========================================================================
 networks:
-  backend_network:
+  forex_network:
     driver: bridge
-  llm-net:
-    driver: bridge
+    name: forex_ml_network
+
+# ==========================================================================
+# Volumes for Data Persistence
+# ==========================================================================
+volumes:
+  postgres_data:
+    name: forex_postgres_data
+  prometheus_data:
+    name: forex_prometheus_data
+  grafana_data:
+    name: forex_grafana_data
