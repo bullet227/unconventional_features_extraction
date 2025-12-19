@@ -1,0 +1,17 @@
+# GPU-specific dependencies for NVIDIA CUDA 12.1
+# Install with: pip install -r requirements.gpu.txt
+
+# PyTorch with CUDA 12.1 support
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch>=2.1.0
+torchvision>=0.16.0
+torchaudio>=2.1.0
+
+# OpenCV for image processing
+opencv-python>=4.8.0
+
+# Astronomy/Ephemeris calculations
+pyephem>=4.1.0
+
+# GPU-accelerated XGBoost (optional, uses CUDA if available)
+# xgboost already in requirements.txt, will auto-detect GPU

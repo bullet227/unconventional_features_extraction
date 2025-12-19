@@ -1,0 +1,118 @@
+# Dockerfile.gpu - GPU-enabled ML Pipeline with NVIDIA CUDA
+# For deployment on GPU nodes (E-12, E-13, E-14)
+
+# ============================================================================
+# Stage 1: Builder - Install dependencies and build wheels
+# ============================================================================
+FROM nvidia/cuda:12.1.0-devel-ubuntu22.04 AS builder
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+WORKDIR /build
+
+# Install Python and build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-dev \
+    python3.11-venv \
+    python3-pip \
+    build-essential \
+    gcc \
+    g++ \
+    libpq-dev \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.11 as default
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
+    && update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+
+# Copy requirements
+COPY requirements.txt .
+COPY requirements.gpu.txt .
+
+# Create wheels for all dependencies (including GPU packages)
+RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt \
+    && pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.gpu.txt
+
+
+# ============================================================================
+# Stage 2: Runtime - Final GPU-enabled image
+# ============================================================================
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04 AS runtime
+
+# Labels
+LABEL maintainer="Forex ML Pipeline"
+LABEL description="GPU-enabled Unconventional Features ML Pipeline"
+LABEL version="0.1.0"
+LABEL nvidia.cuda.version="12.1.0"
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    # CUDA configuration
+    CUDA_HOME=/usr/local/cuda \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH \
+    # Default database configuration
+    POSTGRES_HOST=postgres \
+    POSTGRES_PORT=5432 \
+    POSTGRES_USER=postgres \
+    POSTGRES_PASSWORD=forex_ml_2024 \
+    FOREX_DB=forex_trading_data \
+    UNCONVENTIONAL_DB=unconventional_features \
+    # Pipeline configuration
+    BATCH_SIZE=250000 \
+    PARALLEL_WORKERS=4 \
+    ENABLE_IMAGE_FEATURES=true \
+    ENABLE_PROMETHEUS=false \
+    # Model defaults
+    MODEL_TYPE=xgboost \
+    N_SPLITS=5 \
+    MAX_FEATURES=100
+
+WORKDIR /app
+
+# Install Python and runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3-pip \
+    libpq5 \
+    libgomp1 \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Set Python 3.11 as default
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+
+# Copy wheels from builder and install
+COPY --from=builder /wheels /wheels
+RUN pip install --no-cache-dir /wheels/* \
+    && rm -rf /wheels
+
+# Create directories for data, models, and reports
+RUN mkdir -p /app/data /app/models /app/reports /app/logs
+
+# Copy application code
+COPY features/ ./features/
+COPY ml_pipeline/ ./ml_pipeline/
+COPY unconventional_features.py .
+
+# Create non-root user for security
+RUN groupadd -r mlpipeline && useradd -r -g mlpipeline mlpipeline \
+    && chown -R mlpipeline:mlpipeline /app
+
+USER mlpipeline
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')" || exit 1
+
+# Default command
+CMD ["python", "ml_pipeline/run_pipeline.py", "--sample", "--output", "/app/reports"]

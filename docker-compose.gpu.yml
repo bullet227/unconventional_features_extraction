@@ -1,0 +1,87 @@
+# docker-compose.gpu.yml - GPU Override Configuration
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up
+#
+# Enables NVIDIA GPU support for nodes E-12, E-13, E-14
+# Requires: nvidia-docker2 runtime installed on host
+
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # GPU-enabled ML Pipeline Service
+  # ==========================================================================
+  ml-pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    image: forex-ml-pipeline:gpu
+
+    # NVIDIA GPU configuration
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    environment:
+      # Enable GPU features
+      ENABLE_IMAGE_FEATURES: "true"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+
+      # Optimize for GPU
+      CUDA_VISIBLE_DEVICES: "0"
+      TF_FORCE_GPU_ALLOW_GROWTH: "true"
+      PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
+
+    # GPU runtime (alternative to deploy.resources)
+    runtime: nvidia
+
+  # ==========================================================================
+  # GPU-enabled Feature ETL Service
+  # ==========================================================================
+  feature-etl:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    image: forex-ml-pipeline:gpu
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    environment:
+      ENABLE_IMAGE_FEATURES: "true"
+      NVIDIA_VISIBLE_DEVICES: all
+      CUDA_VISIBLE_DEVICES: "0"
+
+    runtime: nvidia
+
+  # ==========================================================================
+  # GPU-enabled Development Container
+  # ==========================================================================
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    image: forex-ml-pipeline:gpu
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    environment:
+      ENABLE_IMAGE_FEATURES: "true"
+      NVIDIA_VISIBLE_DEVICES: all
+
+    runtime: nvidia
