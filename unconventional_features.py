@@ -254,7 +254,8 @@ class FeatureETLPipeline:
             raise ImportError("SQLAlchemy required for ETL pipeline. pip install sqlalchemy psycopg")
 
         self.forex_db = forex_db or os.getenv("FOREX_DB", "forex_trading_data")
-        self.target_db = target_db or os.getenv("UNCONVENTIONAL_DB", "features_data")
+        # FEATURES_DB is the canonical env var, UNCONVENTIONAL_DB is legacy alias
+        self.target_db = target_db or os.getenv("FEATURES_DB") or os.getenv("UNCONVENTIONAL_DB", "features_data")
         self.host = host or os.getenv("POSTGRES_HOST", "localhost")
         self.port = port or os.getenv("POSTGRES_PORT", "5432")
         self.user = user or os.getenv("POSTGRES_USER", "postgres")

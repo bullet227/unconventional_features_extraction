@@ -58,7 +58,8 @@ class DataLoader:
             host, port, user, password: Connection details (fallback to env vars)
         """
         self.forex_db = forex_db or os.getenv("FOREX_DB", "forex_trading_data")
-        self.unconventional_db = unconventional_db or os.getenv("ML_DB", "unconventional")
+        # FEATURES_DB is the canonical env var; ML_DB and UNCONVENTIONAL_DB are legacy aliases
+        self.unconventional_db = unconventional_db or os.getenv("FEATURES_DB") or os.getenv("ML_DB") or os.getenv("UNCONVENTIONAL_DB", "features_data")
         self.host = host or os.getenv("POSTGRES_HOST", "localhost")
         self.port = port or int(os.getenv("POSTGRES_PORT", "5432"))
         self.user = user or os.getenv("POSTGRES_USER", "postgres")

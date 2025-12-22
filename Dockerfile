@@ -31,19 +31,24 @@ FROM python:3.11-slim AS runtime
 # Labels
 LABEL maintainer="Forex ML Pipeline"
 LABEL description="Unconventional Features Extraction and ML Pipeline for Forex Trading"
-LABEL version="0.1.0"
+LABEL version="0.2.0"
 
 # Environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
-    # Default database configuration
+    # Database configuration - Explicit source/target separation
     POSTGRES_HOST=postgres \
     POSTGRES_PORT=5432 \
     POSTGRES_USER=postgres \
     POSTGRES_PASSWORD=forex_ml_2024 \
+    # Source database (candles - READ ONLY)
     FOREX_DB=forex_trading_data \
-    UNCONVENTIONAL_DB=unconventional_features \
+    # Target database (features - WRITE)
+    FEATURES_DB=features_data \
+    # Legacy aliases for backward compatibility
+    UNCONVENTIONAL_DB=features_data \
+    ML_DB=features_data \
     # Pipeline configuration
     BATCH_SIZE=250000 \
     PARALLEL_WORKERS=4 \
@@ -68,23 +73,27 @@ COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir /wheels/* \
     && rm -rf /wheels
 
-# Create directories for data, models, and reports
+# Create directories for data, models, reports, and logs
+# These will be owned by mlpipeline user after chown
 RUN mkdir -p /app/data /app/models /app/reports /app/logs
 
 # Copy application code
 COPY features/ ./features/
 COPY ml_pipeline/ ./ml_pipeline/
+COPY scripts/ ./scripts/
+COPY config/ ./config/
 COPY unconventional_features.py .
+COPY db_contract.py .
 
-# Create non-root user for security
+# Create non-root user for security and set ownership
 RUN groupadd -r mlpipeline && useradd -r -g mlpipeline mlpipeline \
     && chown -R mlpipeline:mlpipeline /app
 
 USER mlpipeline
 
-# Health check
+# Health check - verify database contract module loads
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "from ml_pipeline import DataLoader; print('healthy')" || exit 1
+    CMD python -c "from db_contract import DatabaseContract; from ml_pipeline import DataLoader; print('healthy')" || exit 1
 
 # Default command: run the pipeline with sample data
 CMD ["python", "ml_pipeline/run_pipeline.py", "--sample", "--output", "/app/reports"]
@@ -92,4 +101,6 @@ CMD ["python", "ml_pipeline/run_pipeline.py", "--sample", "--output", "/app/repo
 # Alternative entry points available via docker run:
 # - Full pipeline: python ml_pipeline/run_pipeline.py --asset EURUSD --timeframe H1
 # - Feature ETL: python unconventional_features.py --assets EURUSD --timeframes H1
+# - DB Validation: python db_contract.py
+# - Table Audit: python scripts/audit_candle_tables.py
 # - Interactive: python -i

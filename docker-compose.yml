@@ -11,7 +11,8 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forex_ml_2024}
-      POSTGRES_MULTIPLE_DATABASES: forex_trading_data,unconventional_features
+      # Note: This creates both databases at init time
+      POSTGRES_MULTIPLE_DATABASES: forex_trading_data,features_data
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
@@ -39,13 +40,18 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      # Database configuration
+      # Database configuration - Explicit source/target separation
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forex_ml_2024}
+      # Source database (candles - READ ONLY)
       FOREX_DB: ${FOREX_DB:-forex_trading_data}
-      UNCONVENTIONAL_DB: ${UNCONVENTIONAL_DB:-unconventional_features}
+      # Target database (features - WRITE)
+      FEATURES_DB: ${FEATURES_DB:-features_data}
+      # Legacy alias for backward compatibility
+      UNCONVENTIONAL_DB: ${FEATURES_DB:-features_data}
+      ML_DB: ${FEATURES_DB:-features_data}
       # Pipeline configuration
       BATCH_SIZE: ${BATCH_SIZE:-250000}
       PARALLEL_WORKERS: ${PARALLEL_WORKERS:-4}
@@ -83,12 +89,18 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      # Database configuration - Explicit source/target separation
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forex_ml_2024}
+      # Source database (candles - READ ONLY)
       FOREX_DB: ${FOREX_DB:-forex_trading_data}
-      UNCONVENTIONAL_DB: ${UNCONVENTIONAL_DB:-unconventional_features}
+      # Target database (features - WRITE)
+      FEATURES_DB: ${FEATURES_DB:-features_data}
+      # Legacy alias for backward compatibility
+      UNCONVENTIONAL_DB: ${FEATURES_DB:-features_data}
+      # Pipeline settings
       BATCH_SIZE: ${BATCH_SIZE:-250000}
       PARALLEL_WORKERS: ${PARALLEL_WORKERS:-8}
       ASSET_LIST: ${ASSET_LIST:-ALL}
@@ -96,9 +108,11 @@ services:
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+      - ./reports:/app/reports
     networks:
       - forex_network
-    command: ["python", "unconventional_features.py"]
+    # Validate database contract before running ETL
+    command: ["python", "-c", "from db_contract import validate_databases; validate_databases(); exec(open('unconventional_features.py').read())"]
 
   # ==========================================================================
   # Interactive Development Container
