@@ -45,77 +45,90 @@ def add_neural_oscillation_features(df: pl.DataFrame) -> pl.DataFrame:
     # Slowest oscillations, represent fundamental market cycles
     df = df.with_columns([
         # Ultra-long moving average
-        pl.col("close").rolling_mean(250).alias("delta_ma"),
+        pl.col("close").rolling_mean(window_size=250).alias("delta_ma"),
 
         # Delta trend strength
-        (pl.col("close").rolling_mean(250) - pl.col("close").rolling_mean(500))
+        (pl.col("close").rolling_mean(window_size=250) - pl.col("close").rolling_mean(window_size=500))
         .alias("delta_trend"),
 
         # Delta phase (position relative to ultra-long trend)
-        ((pl.col("close") - pl.col("close").rolling_mean(250)) /
-         (pl.col("close").rolling_std(250) + 1e-8)).alias("delta_phase"),
+        ((pl.col("close") - pl.col("close").rolling_mean(window_size=250)) /
+         (pl.col("close").rolling_std(window_size=250) + 1e-8)).alias("delta_phase"),
     ])
 
     # 2. THETA WAVES (Light sleep / Long-term trends)
     # Associated with memory consolidation in brain; market "memory" of trends
     df = df.with_columns([
-        pl.col("close").rolling_mean(125).alias("theta_ma"),
+        pl.col("close").rolling_mean(window_size=125).alias("theta_ma"),
 
-        (pl.col("close").rolling_mean(125) - pl.col("close").rolling_mean(250))
+        (pl.col("close").rolling_mean(window_size=125) - pl.col("close").rolling_mean(window_size=250))
         .alias("theta_trend"),
 
-        ((pl.col("close") - pl.col("close").rolling_mean(125)) /
-         (pl.col("close").rolling_std(125) + 1e-8)).alias("theta_phase"),
+        ((pl.col("close") - pl.col("close").rolling_mean(window_size=125)) /
+         (pl.col("close").rolling_std(window_size=125) + 1e-8)).alias("theta_phase"),
     ])
 
     # 3. ALPHA WAVES (Relaxed wakefulness / Medium trends)
     # Calm, stable trending in brain; represent normal market trending
     df = df.with_columns([
-        pl.col("close").rolling_mean(100).alias("alpha_ma"),
+        pl.col("close").rolling_mean(window_size=100).alias("alpha_ma"),
 
-        (pl.col("close").rolling_mean(100) - pl.col("close").rolling_mean(200))
+        (pl.col("close").rolling_mean(window_size=100) - pl.col("close").rolling_mean(window_size=200))
         .alias("alpha_trend"),
 
-        ((pl.col("close") - pl.col("close").rolling_mean(100)) /
-         (pl.col("close").rolling_std(100) + 1e-8)).alias("alpha_phase"),
+        ((pl.col("close") - pl.col("close").rolling_mean(window_size=100)) /
+         (pl.col("close").rolling_std(window_size=100) + 1e-8)).alias("alpha_phase"),
     ])
 
     # 4. BETA WAVES (Active thinking / Short-term trends)
     # Alert, focused activity in brain; active trading
     df = df.with_columns([
-        pl.col("close").rolling_mean(50).alias("beta_ma"),
+        pl.col("close").rolling_mean(window_size=50).alias("beta_ma"),
 
-        (pl.col("close").rolling_mean(50) - pl.col("close").rolling_mean(100))
+        (pl.col("close").rolling_mean(window_size=50) - pl.col("close").rolling_mean(window_size=100))
         .alias("beta_trend"),
 
-        ((pl.col("close") - pl.col("close").rolling_mean(50)) /
-         (pl.col("close").rolling_std(50) + 1e-8)).alias("beta_phase"),
+        ((pl.col("close") - pl.col("close").rolling_mean(window_size=50)) /
+         (pl.col("close").rolling_std(window_size=50) + 1e-8)).alias("beta_phase"),
     ])
 
     # 5. GAMMA WAVES (Peak focus / High-frequency activity)
     # Highest frequency, represent rapid market movements
     df = df.with_columns([
-        pl.col("close").rolling_mean(20).alias("gamma_ma"),
+        pl.col("close").rolling_mean(window_size=20).alias("gamma_ma"),
 
-        (pl.col("close").rolling_mean(20) - pl.col("close").rolling_mean(50))
+        (pl.col("close").rolling_mean(window_size=20) - pl.col("close").rolling_mean(window_size=50))
         .alias("gamma_trend"),
 
-        ((pl.col("close") - pl.col("close").rolling_mean(20)) /
-         (pl.col("close").rolling_std(20) + 1e-8)).alias("gamma_phase"),
+        ((pl.col("close") - pl.col("close").rolling_mean(window_size=20)) /
+         (pl.col("close").rolling_std(window_size=20) + 1e-8)).alias("gamma_phase"),
     ])
 
     # Wave coherence (synchronization between bands)
+    # Using rolling Pearson correlation formula: cov(x,y) / (std(x) * std(y))
     df = df.with_columns([
         # Delta-theta coherence (long-term alignment)
-        pl.corr("delta_trend", "theta_trend", ddof=0).rolling_mean(50)
+        (((pl.col("delta_trend") - pl.col("delta_trend").rolling_mean(window_size=50)) *
+          (pl.col("theta_trend") - pl.col("theta_trend").rolling_mean(window_size=50)))
+         .rolling_mean(window_size=50) /
+         (pl.col("delta_trend").rolling_std(window_size=50) *
+          pl.col("theta_trend").rolling_std(window_size=50) + 1e-8))
         .alias("delta_theta_coherence"),
 
         # Alpha-beta coherence (medium-short alignment)
-        pl.corr("alpha_trend", "beta_trend", ddof=0).rolling_mean(50)
+        (((pl.col("alpha_trend") - pl.col("alpha_trend").rolling_mean(window_size=50)) *
+          (pl.col("beta_trend") - pl.col("beta_trend").rolling_mean(window_size=50)))
+         .rolling_mean(window_size=50) /
+         (pl.col("alpha_trend").rolling_std(window_size=50) *
+          pl.col("beta_trend").rolling_std(window_size=50) + 1e-8))
         .alias("alpha_beta_coherence"),
 
         # Beta-gamma coherence (short-high frequency alignment)
-        pl.corr("beta_trend", "gamma_trend", ddof=0).rolling_mean(20)
+        (((pl.col("beta_trend") - pl.col("beta_trend").rolling_mean(window_size=20)) *
+          (pl.col("gamma_trend") - pl.col("gamma_trend").rolling_mean(window_size=20)))
+         .rolling_mean(window_size=20) /
+         (pl.col("beta_trend").rolling_std(window_size=20) *
+          pl.col("gamma_trend").rolling_std(window_size=20) + 1e-8))
         .alias("beta_gamma_coherence"),
     ])
 
@@ -157,11 +170,11 @@ def add_neural_oscillation_features(df: pl.DataFrame) -> pl.DataFrame:
     df = df.with_columns([
         # Theta-gamma coupling (slow phase, fast amplitude)
         (pl.col("theta_phase") * pl.col("gamma_amplitude"))
-        .rolling_mean(20).alias("theta_gamma_coupling"),
+        .rolling_mean(window_size=20).alias("theta_gamma_coupling"),
 
         # Alpha-beta coupling
         (pl.col("alpha_phase") * pl.col("beta_amplitude"))
-        .rolling_mean(20).alias("alpha_beta_coupling"),
+        .rolling_mean(window_size=20).alias("alpha_beta_coupling"),
     ])
 
     # Neural synchronization index (market coherence)
@@ -184,11 +197,11 @@ def add_neural_oscillation_features(df: pl.DataFrame) -> pl.DataFrame:
           pl.col("gamma_amplitude")) / 5).alias("neural_complexity"),
 
         # Simplicity (single dominant frequency)
-        pl.max_horizontal([
+        pl.max_horizontal(
             pl.col("delta_amplitude"), pl.col("theta_amplitude"),
             pl.col("alpha_amplitude"), pl.col("beta_amplitude"),
             pl.col("gamma_amplitude")
-        ]).alias("neural_simplicity"),
+        ).alias("neural_simplicity"),
     ])
 
     df = df.with_columns([
@@ -231,10 +244,12 @@ def add_brainwave_entropy_features(df: pl.DataFrame) -> pl.DataFrame:
     # Sample entropy (regularity/predictability)
     df = df.with_columns([
         # Price pattern regularity
-        pl.col("returns").rolling_std(10) /
-        (pl.col("returns").rolling_std(50) + 1e-8)
+        (pl.col("returns").rolling_std(window_size=10) /
+        (pl.col("returns").rolling_std(window_size=50) + 1e-8))
         .alias("sample_entropy"),
+    ])
 
+    df = df.with_columns([
         # High entropy = unpredictable
         (pl.col("sample_entropy") > 1.5).alias("high_entropy"),
 
@@ -243,16 +258,29 @@ def add_brainwave_entropy_features(df: pl.DataFrame) -> pl.DataFrame:
     ])
 
     # Neural phase locking (oscillations locked in phase)
+    # Create temporary columns for fast and slow phase changes
     df = df.with_columns([
-        # Fast-slow phase synchrony
-        pl.corr(
-            pl.col("close").rolling_mean(20).pct_change(),
-            pl.col("close").rolling_mean(100).pct_change(),
-            ddof=0
-        ).rolling_mean(20).alias("phase_locking_value"),
+        pl.col("close").rolling_mean(window_size=20).pct_change().alias("_fast_phase"),
+        pl.col("close").rolling_mean(window_size=100).pct_change().alias("_slow_phase"),
+    ])
 
+    # Calculate rolling correlation using Pearson formula
+    df = df.with_columns([
+        # Fast-slow phase synchrony (rolling correlation)
+        (((pl.col("_fast_phase") - pl.col("_fast_phase").rolling_mean(window_size=20)) *
+          (pl.col("_slow_phase") - pl.col("_slow_phase").rolling_mean(window_size=20)))
+         .rolling_mean(window_size=20) /
+         (pl.col("_fast_phase").rolling_std(window_size=20) *
+          pl.col("_slow_phase").rolling_std(window_size=20) + 1e-8))
+        .alias("phase_locking_value"),
+    ])
+
+    df = df.with_columns([
         # Strong phase locking = coordinated movement
         (pl.col("phase_locking_value").abs() > 0.8).alias("strong_phase_locking"),
     ])
+
+    # Clean up temporary columns
+    df = df.drop(["_fast_phase", "_slow_phase"])
 
     return df

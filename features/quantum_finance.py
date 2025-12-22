@@ -34,11 +34,11 @@ def add_quantum_features(df: pl.DataFrame) -> pl.DataFrame:
     # Markets exhibit both wave (trending) and particle (discrete) behavior
     df = df.with_columns([
         # Wave behavior: smooth trends
-        pl.col("close").rolling_mean(20).alias("wave_component"),
+        pl.col("close").rolling_mean(window_size=20).alias("wave_component"),
 
         # Particle behavior: discrete jumps
         (pl.col("close") - pl.col("close").shift(1)).abs()
-        .rolling_sum(20).alias("particle_component"),
+        .rolling_sum(window_size=20).alias("particle_component"),
     ])
 
     df = df.with_columns([
@@ -58,10 +58,10 @@ def add_quantum_features(df: pl.DataFrame) -> pl.DataFrame:
     # Cannot know both price and momentum with perfect precision
     df = df.with_columns([
         # Price uncertainty (standard deviation)
-        pl.col("close").rolling_std(10).alias("price_uncertainty"),
+        pl.col("close").rolling_std(window_size=10).alias("price_uncertainty"),
 
         # Momentum uncertainty
-        pl.col("momentum").rolling_std(10).alias("momentum_uncertainty"),
+        pl.col("momentum").rolling_std(window_size=10).alias("momentum_uncertainty"),
     ])
 
     df = df.with_columns([
@@ -79,17 +79,17 @@ def add_quantum_features(df: pl.DataFrame) -> pl.DataFrame:
     # Market exists in multiple states simultaneously until "measured"
     df = df.with_columns([
         # Bull state probability
-        ((pl.col("close") > pl.col("close").rolling_mean(20)).cast(pl.Int32)
-         .rolling_mean(10)).alias("bull_state_prob"),
+        ((pl.col("close") > pl.col("close").rolling_mean(window_size=20)).cast(pl.Int32)
+         .rolling_mean(window_size=10)).alias("bull_state_prob"),
 
         # Bear state probability
-        ((pl.col("close") < pl.col("close").rolling_mean(20)).cast(pl.Int32)
-         .rolling_mean(10)).alias("bear_state_prob"),
+        ((pl.col("close") < pl.col("close").rolling_mean(window_size=20)).cast(pl.Int32)
+         .rolling_mean(window_size=10)).alias("bear_state_prob"),
 
         # Range state probability
-        ((pl.col("close") - pl.col("close").rolling_mean(20)).abs() <
-         pl.col("close").rolling_std(20) * 0.5).cast(pl.Int32)
-        .rolling_mean(10).alias("range_state_prob"),
+        ((pl.col("close") - pl.col("close").rolling_mean(window_size=20)).abs() <
+         pl.col("close").rolling_std(window_size=20) * 0.5).cast(pl.Int32)
+        .rolling_mean(window_size=10).alias("range_state_prob"),
     ])
 
     # Superposition coherence (how mixed the states are)
@@ -100,15 +100,32 @@ def add_quantum_features(df: pl.DataFrame) -> pl.DataFrame:
 
     # 4. QUANTUM ENTANGLEMENT (correlation persistence)
     # When assets are entangled, measuring one affects the other
+    # Create temporary columns for lagged values
     df = df.with_columns([
-        # Self-entanglement: current price with its own past
-        pl.corr("close", pl.col("close").shift(20), ddof=0)
-        .rolling_mean(10).alias("temporal_entanglement"),
-
-        # Momentum entanglement
-        pl.corr("returns", pl.col("returns").shift(10), ddof=0)
-        .rolling_mean(10).alias("momentum_entanglement"),
+        pl.col("close").shift(20).alias("_close_lag20"),
+        pl.col("returns").shift(10).alias("_returns_lag10"),
     ])
+
+    # Calculate rolling correlations using Pearson formula
+    df = df.with_columns([
+        # Self-entanglement: current price with its own past (rolling correlation)
+        (((pl.col("close") - pl.col("close").rolling_mean(window_size=10)) *
+          (pl.col("_close_lag20") - pl.col("_close_lag20").rolling_mean(window_size=10)))
+         .rolling_mean(window_size=10) /
+         (pl.col("close").rolling_std(window_size=10) *
+          pl.col("_close_lag20").rolling_std(window_size=10) + 1e-8))
+        .alias("temporal_entanglement"),
+
+        # Momentum entanglement (rolling correlation)
+        (((pl.col("returns") - pl.col("returns").rolling_mean(window_size=10)) *
+          (pl.col("_returns_lag10") - pl.col("_returns_lag10").rolling_mean(window_size=10)))
+         .rolling_mean(window_size=10) /
+         (pl.col("returns").rolling_std(window_size=10) *
+          pl.col("_returns_lag10").rolling_std(window_size=10) + 1e-8))
+        .alias("momentum_entanglement"),
+    ])
+
+    df = df.drop(["_close_lag20", "_returns_lag10"])
 
     # Entanglement strength (persistent correlation)
     df = df.with_columns([
@@ -120,10 +137,10 @@ def add_quantum_features(df: pl.DataFrame) -> pl.DataFrame:
     # Price can "tunnel" through resistance/support barriers
     df = df.with_columns([
         # Resistance level (recent high)
-        pl.col("high").rolling_max(50).alias("resistance"),
+        pl.col("high").rolling_max(window_size=50).alias("resistance"),
 
         # Support level (recent low)
-        pl.col("low").rolling_min(50).alias("support"),
+        pl.col("low").rolling_min(window_size=50).alias("support"),
     ])
 
     df = df.with_columns([
@@ -149,7 +166,7 @@ def add_quantum_features(df: pl.DataFrame) -> pl.DataFrame:
         (pl.col("returns")**2 * pl.col("volume")).alias("kinetic_energy"),
 
         # Potential energy (distance from mean)
-        ((pl.col("close") - pl.col("close").rolling_mean(50))**2)
+        ((pl.col("close") - pl.col("close").rolling_mean(window_size=50))**2)
         .alias("potential_energy"),
     ])
 
@@ -159,7 +176,7 @@ def add_quantum_features(df: pl.DataFrame) -> pl.DataFrame:
         .alias("total_energy"),
 
         # Energy level (quantized into discrete states)
-        (pl.col("total_energy") / pl.col("total_energy").rolling_mean(50))
+        (pl.col("total_energy") / pl.col("total_energy").rolling_mean(window_size=50))
         .alias("energy_level"),
     ])
 
@@ -167,7 +184,7 @@ def add_quantum_features(df: pl.DataFrame) -> pl.DataFrame:
     # Superposition collapses to definite state (trend emerges)
     df = df.with_columns([
         # Coherence time: how long superposition lasts
-        pl.col("superposition_coherence").rolling_mean(5).alias("coherence_time"),
+        pl.col("superposition_coherence").rolling_mean(window_size=5).alias("coherence_time"),
 
         # Decoherence: collapse to definite state
         (1 - pl.col("superposition_coherence")).alias("decoherence"),
@@ -182,10 +199,10 @@ def add_quantum_features(df: pl.DataFrame) -> pl.DataFrame:
     # Waves interfere constructively (trends align) or destructively (chop)
     df = df.with_columns([
         # Fast wave (short-term trend)
-        pl.col("close").rolling_mean(5).alias("fast_wave"),
+        pl.col("close").rolling_mean(window_size=5).alias("fast_wave"),
 
         # Slow wave (long-term trend)
-        pl.col("close").rolling_mean(20).alias("slow_wave"),
+        pl.col("close").rolling_mean(window_size=20).alias("slow_wave"),
     ])
 
     df = df.with_columns([
@@ -202,8 +219,8 @@ def add_quantum_features(df: pl.DataFrame) -> pl.DataFrame:
 
     # Interference pattern strength
     df = df.with_columns([
-        (pl.col("constructive_interference").rolling_sum(10) -
-         pl.col("destructive_interference").rolling_sum(10))
+        (pl.col("constructive_interference").rolling_sum(window_size=10) -
+         pl.col("destructive_interference").rolling_sum(window_size=10))
         .alias("interference_pattern"),
     ])
 
@@ -228,21 +245,32 @@ def add_quantum_field_theory_features(df: pl.DataFrame) -> pl.DataFrame:
     # Virtual particles (micro-fluctuations that appear and disappear)
     df = df.with_columns([
         # Vacuum energy: fluctuations even at equilibrium
-        (pl.col("close") - pl.col("close").rolling_mean(100)).abs()
-        .rolling_mean(10).alias("vacuum_fluctuation"),
+        (pl.col("close") - pl.col("close").rolling_mean(window_size=100)).abs()
+        .rolling_mean(window_size=10).alias("vacuum_fluctuation"),
 
         # Virtual particle density (micro-movements)
-        pl.col("returns").abs().rolling_sum(10).alias("virtual_particle_density"),
+        pl.col("returns").abs().rolling_sum(window_size=10).alias("virtual_particle_density"),
+    ])
+
+    # Create temporary column for volume pct change
+    df = df.with_columns([
+        pl.col("volume").pct_change().alias("_volume_pct_change"),
     ])
 
     # Field strength (market force field)
     df = df.with_columns([
         # Field gradient (rate of change of returns)
-        pl.col("returns").diff().abs().rolling_mean(10).alias("field_gradient"),
+        pl.col("returns").diff().abs().rolling_mean(window_size=10).alias("field_gradient"),
 
-        # Field coupling (how strongly price couples to volume)
-        pl.corr("returns", pl.col("volume").pct_change(), ddof=0)
-        .rolling_mean(20).alias("field_coupling"),
+        # Field coupling (how strongly price couples to volume) - rolling correlation
+        (((pl.col("returns") - pl.col("returns").rolling_mean(window_size=20)) *
+          (pl.col("_volume_pct_change") - pl.col("_volume_pct_change").rolling_mean(window_size=20)))
+         .rolling_mean(window_size=20) /
+         (pl.col("returns").rolling_std(window_size=20) *
+          pl.col("_volume_pct_change").rolling_std(window_size=20) + 1e-8))
+        .alias("field_coupling"),
     ])
+
+    df = df.drop("_volume_pct_change")
 
     return df

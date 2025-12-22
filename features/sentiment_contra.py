@@ -61,33 +61,33 @@ def retail_sentiment_features(df: pl.DataFrame, asset: str) -> pl.DataFrame:
     # Retail trap detection (price moves that trap retail)
     df = df.with_columns([
         # Bull trap: new high followed by close below open
-        ((pl.col("high") > pl.col("high").shift(1).rolling_max(10)) &
+        ((pl.col("high") > pl.col("high").shift(1).rolling_max(window_size=10)) &
          (pl.col("close") < pl.col("open"))).alias("bull_trap"),
 
         # Bear trap: new low followed by close above open
-        ((pl.col("low") < pl.col("low").shift(1).rolling_min(10)) &
+        ((pl.col("low") < pl.col("low").shift(1).rolling_min(window_size=10)) &
          (pl.col("close") > pl.col("open"))).alias("bear_trap"),
 
         # FOMO detector (late retail entries after extended move)
-        ((pl.col("close") > pl.col("close").rolling_mean(20) * 1.02) &
-         (pl.col("volume") > pl.col("volume").rolling_mean(20) * 1.5) &
+        ((pl.col("close") > pl.col("close").rolling_mean(window_size=20) * 1.02) &
+         (pl.col("volume") > pl.col("volume").rolling_mean(window_size=20) * 1.5) &
          (pl.col("rsi_14") > 65)).alias("fomo_long_detected"),
 
-        ((pl.col("close") < pl.col("close").rolling_mean(20) * 0.98) &
-         (pl.col("volume") > pl.col("volume").rolling_mean(20) * 1.5) &
+        ((pl.col("close") < pl.col("close").rolling_mean(window_size=20) * 0.98) &
+         (pl.col("volume") > pl.col("volume").rolling_mean(window_size=20) * 1.5) &
          (pl.col("rsi_14") < 35)).alias("fomo_short_detected"),
     ])
 
     # Capitulation signals (retail giving up = potential reversal)
     df = df.with_columns([
         # Extreme volume on new lows (retail panic selling)
-        ((pl.col("low") < pl.col("low").shift(1).rolling_min(20)) &
-         (pl.col("volume") > pl.col("volume").rolling_quantile(0.95, window_size=50)))
+        ((pl.col("low") < pl.col("low").shift(1).rolling_min(window_size=20)) &
+         (pl.col("volume") > pl.col("volume").rolling_quantile(quantile=0.95, window_size=50)))
         .alias("long_capitulation"),
 
         # Extreme volume on new highs (short squeeze)
-        ((pl.col("high") > pl.col("high").shift(1).rolling_max(20)) &
-         (pl.col("volume") > pl.col("volume").rolling_quantile(0.95, window_size=50)))
+        ((pl.col("high") > pl.col("high").shift(1).rolling_max(window_size=20)) &
+         (pl.col("volume") > pl.col("volume").rolling_quantile(quantile=0.95, window_size=50)))
         .alias("short_capitulation"),
     ])
 
@@ -112,8 +112,8 @@ def _calculate_rsi(df: pl.DataFrame, period: int = 14) -> pl.Expr:
     gain = pl.when(delta > 0).then(delta).otherwise(0)
     loss = pl.when(delta < 0).then(-delta).otherwise(0)
 
-    avg_gain = gain.rolling_mean(period)
-    avg_loss = loss.rolling_mean(period)
+    avg_gain = gain.rolling_mean(window_size=period)
+    avg_loss = loss.rolling_mean(window_size=period)
 
     rs = avg_gain / (avg_loss + 1e-10)
     rsi = 100 - (100 / (1 + rs))
