@@ -20,13 +20,13 @@ def add_game_theory_features(df: pl.DataFrame) -> pl.DataFrame:
     df = df.with_columns([
         # Selling pressure (defection)
         ((pl.col("close") < pl.col("open")) &
-         (pl.col("volume") > pl.col("volume").rolling_mean(20))).cast(pl.Int32)
-        .rolling_sum(10).alias("selling_pressure"),
+         (pl.col("volume") > pl.col("volume").rolling_mean(window_size=20))).cast(pl.Int32)
+        .rolling_sum(window_size=10).alias("selling_pressure"),
 
         # Buying pressure (cooperation)
         ((pl.col("close") > pl.col("open")) &
-         (pl.col("volume") > pl.col("volume").rolling_mean(20))).cast(pl.Int32)
-        .rolling_sum(10).alias("buying_pressure"),
+         (pl.col("volume") > pl.col("volume").rolling_mean(window_size=20))).cast(pl.Int32)
+        .rolling_sum(window_size=10).alias("buying_pressure"),
     ])
 
     df = df.with_columns([
@@ -48,10 +48,10 @@ def add_game_theory_features(df: pl.DataFrame) -> pl.DataFrame:
     # Price levels where no participant can improve by changing strategy
     df = df.with_columns([
         # Price stability (low volatility = near equilibrium)
-        pl.col("close").rolling_std(20).alias("price_volatility"),
+        pl.col("close").rolling_std(window_size=20).alias("price_volatility"),
 
         # Volume stability (consistent volume = equilibrium)
-        (pl.col("volume").rolling_std(20) / (pl.col("volume").rolling_mean(20) + 1))
+        (pl.col("volume").rolling_std(window_size=20) / (pl.col("volume").rolling_mean(window_size=20) + 1))
         .alias("volume_stability"),
     ])
 
@@ -61,8 +61,8 @@ def add_game_theory_features(df: pl.DataFrame) -> pl.DataFrame:
          (1 / (pl.col("volume_stability") + 0.01))).alias("nash_equilibrium_strength"),
 
         # Equilibrium break (departure from stable state)
-        ((pl.col("price_volatility") > pl.col("price_volatility").rolling_mean(50)) |
-         (pl.col("volume_stability") > pl.col("volume_stability").rolling_mean(50)))
+        ((pl.col("price_volatility") > pl.col("price_volatility").rolling_mean(window_size=50)) |
+         (pl.col("volume_stability") > pl.col("volume_stability").rolling_mean(window_size=50)))
         .alias("equilibrium_break"),
     ])
 
@@ -93,17 +93,17 @@ def add_game_theory_features(df: pl.DataFrame) -> pl.DataFrame:
     # High reward requires coordination; safe option is low reward
     df = df.with_columns([
         # Trend strength (coordination success = trend)
-        (pl.col("close").rolling_mean(10) - pl.col("close").rolling_mean(50)).abs()
+        (pl.col("close").rolling_mean(window_size=10) - pl.col("close").rolling_mean(window_size=50)).abs()
         .alias("trend_strength"),
 
         # Range trading (safe but low reward)
-        (pl.col("high").rolling_max(20) - pl.col("low").rolling_min(20))
+        (pl.col("high").rolling_max(window_size=20) - pl.col("low").rolling_min(window_size=20))
         .alias("trading_range"),
     ])
 
     df = df.with_columns([
         # Stag hunt success (coordinated trend following)
-        (pl.col("trend_strength") > pl.col("trend_strength").rolling_mean(50))
+        (pl.col("trend_strength") > pl.col("trend_strength").rolling_mean(window_size=50))
         .alias("coordination_success"),
 
         # Risk aversion (prefer safe range over coordinated hunt)
@@ -115,11 +115,11 @@ def add_game_theory_features(df: pl.DataFrame) -> pl.DataFrame:
     # Two traders heading for collision; first to exit loses face but survives
     df = df.with_columns([
         # Momentum clash (opposite forces meeting)
-        (pl.col("returns").rolling_mean(5) * pl.col("returns").rolling_mean(20))
+        (pl.col("returns").rolling_mean(window_size=5) * pl.col("returns").rolling_mean(window_size=20))
         .alias("momentum_product"),
 
         # Volume surge (both sides committed)
-        (pl.col("volume") > pl.col("volume").rolling_mean(20) * 1.5)
+        (pl.col("volume") > pl.col("volume").rolling_mean(window_size=20) * 1.5)
         .alias("volume_surge"),
     ])
 
@@ -138,11 +138,11 @@ def add_game_theory_features(df: pl.DataFrame) -> pl.DataFrame:
     df = df.with_columns([
         # Retaliation pattern (punishment for past defection)
         (pl.col("returns").shift(1) < -0.01).cast(pl.Int32)
-        .rolling_sum(5).alias("past_losses"),
+        .rolling_sum(window_size=5).alias("past_losses"),
 
         # Reward pattern (cooperation success)
         (pl.col("returns").shift(1) > 0.01).cast(pl.Int32)
-        .rolling_sum(5).alias("past_wins"),
+        .rolling_sum(window_size=5).alias("past_wins"),
     ])
 
     df = df.with_columns([
@@ -160,10 +160,10 @@ def add_game_theory_features(df: pl.DataFrame) -> pl.DataFrame:
     # Conservative strategy: limit worst-case scenario
     df = df.with_columns([
         # Maximum recent loss
-        pl.col("returns").rolling_min(10).alias("max_recent_loss"),
+        pl.col("returns").rolling_min(window_size=10).alias("max_recent_loss"),
 
         # Maximum recent gain
-        pl.col("returns").rolling_max(10).alias("max_recent_gain"),
+        pl.col("returns").rolling_max(window_size=10).alias("max_recent_gain"),
     ])
 
     df = df.with_columns([
@@ -185,10 +185,10 @@ def add_game_theory_features(df: pl.DataFrame) -> pl.DataFrame:
 
     df = df.with_columns([
         # Current win streak
-        pl.col("win_streak_indicator").rolling_sum(10).alias("win_streak"),
+        pl.col("win_streak_indicator").rolling_sum(window_size=10).alias("win_streak"),
 
         # Current loss streak
-        (1 - pl.col("win_streak_indicator")).rolling_sum(10).alias("loss_streak"),
+        (1 - pl.col("win_streak_indicator")).rolling_sum(window_size=10).alias("loss_streak"),
     ])
 
     df = df.with_columns([
@@ -207,8 +207,8 @@ def add_game_theory_features(df: pl.DataFrame) -> pl.DataFrame:
     # Can't improve one without hurting another
     df = df.with_columns([
         # Efficient frontier: high return per unit risk
-        (pl.col("returns").rolling_mean(20) /
-         (pl.col("returns").rolling_std(20) + 1e-8)).alias("risk_adjusted_return"),
+        (pl.col("returns").rolling_mean(window_size=20) /
+         (pl.col("returns").rolling_std(window_size=20) + 1e-8)).alias("risk_adjusted_return"),
 
         # Volume efficiency: price movement per unit volume
         (pl.col("returns").abs() / (pl.col("volume").pct_change().abs() + 1e-8))
@@ -217,13 +217,13 @@ def add_game_theory_features(df: pl.DataFrame) -> pl.DataFrame:
 
     df = df.with_columns([
         # Pareto optimal (efficient on both dimensions)
-        ((pl.col("risk_adjusted_return") > pl.col("risk_adjusted_return").rolling_mean(50)) &
-         (pl.col("volume_efficiency") > pl.col("volume_efficiency").rolling_mean(50)))
+        ((pl.col("risk_adjusted_return") > pl.col("risk_adjusted_return").rolling_mean(window_size=50)) &
+         (pl.col("volume_efficiency") > pl.col("volume_efficiency").rolling_mean(window_size=50)))
         .alias("pareto_optimal"),
 
         # Pareto improvement possible (inefficient current state)
-        ((pl.col("risk_adjusted_return") < pl.col("risk_adjusted_return").rolling_mean(50)) |
-         (pl.col("volume_efficiency") < pl.col("volume_efficiency").rolling_mean(50)))
+        ((pl.col("risk_adjusted_return") < pl.col("risk_adjusted_return").rolling_mean(window_size=50)) |
+         (pl.col("volume_efficiency") < pl.col("volume_efficiency").rolling_mean(window_size=50)))
         .alias("pareto_improvement_possible"),
     ])
 
@@ -241,11 +241,11 @@ def add_game_theory_features(df: pl.DataFrame) -> pl.DataFrame:
 
     df = df.with_columns([
         # High-quality mechanism (efficient market structure)
-        (pl.col("liquidity_quality") > pl.col("liquidity_quality").rolling_mean(50))
+        (pl.col("liquidity_quality") > pl.col("liquidity_quality").rolling_mean(window_size=50))
         .alias("efficient_mechanism"),
 
         # Poor mechanism (wide spreads, low liquidity)
-        (pl.col("liquidity_quality") < pl.col("liquidity_quality").rolling_mean(50) * 0.5)
+        (pl.col("liquidity_quality") < pl.col("liquidity_quality").rolling_mean(window_size=50) * 0.5)
         .alias("inefficient_mechanism"),
     ])
 

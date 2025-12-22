@@ -271,7 +271,7 @@ def add_orderflow_features(df: pl.DataFrame, book_data: Optional[List[OrderBookS
         (pl.col("est_buy_volume") / (pl.col("est_sell_volume") + 1)).alias("buy_sell_ratio"),
         
         # Large trade detection
-        (pl.col("volume") > pl.col("volume").rolling_quantile(0.95, window_size=100))
+        (pl.col("volume") > pl.col("volume").rolling_quantile(quantile=0.95, window_size=100))
         .alias("large_trade"),
         
         # Cumulative delta
@@ -295,14 +295,14 @@ def add_orderflow_features(df: pl.DataFrame, book_data: Optional[List[OrderBookS
     # Absorption detection (high volume, small price move)
     df = df.with_columns([
         # Buying absorption
-        ((pl.col("volume") > pl.col("volume").rolling_mean(20) * 2) &
-         ((pl.col("close") - pl.col("open")).abs() < pl.col("close").rolling_std(20) * 0.5) &
+        ((pl.col("volume") > pl.col("volume").rolling_mean(window_size=20) * 2) &
+         ((pl.col("close") - pl.col("open")).abs() < pl.col("close").rolling_std(window_size=20) * 0.5) &
          (pl.col("close") < pl.col("open")))
         .alias("buying_absorption"),
 
         # Selling absorption
-        ((pl.col("volume") > pl.col("volume").rolling_mean(20) * 2) &
-         ((pl.col("close") - pl.col("open")).abs() < pl.col("close").rolling_std(20) * 0.5) &
+        ((pl.col("volume") > pl.col("volume").rolling_mean(window_size=20) * 2) &
+         ((pl.col("close") - pl.col("open")).abs() < pl.col("close").rolling_std(window_size=20) * 0.5) &
          (pl.col("close") > pl.col("open")))
         .alias("selling_absorption"),
     ])
@@ -310,25 +310,25 @@ def add_orderflow_features(df: pl.DataFrame, book_data: Optional[List[OrderBookS
     # Institutional activity proxies
     df = df.with_columns([
         # Block trade detection
-        (pl.col("volume") > pl.col("volume").rolling_mean(100) * 5)
+        (pl.col("volume") > pl.col("volume").rolling_mean(window_size=100) * 5)
         .alias("potential_block_trade"),
-        
+
         # Iceberg order detection (consistent volume at price levels)
-        pl.col("volume").rolling_std(10) / (pl.col("volume").rolling_mean(10) + 1)
+        (pl.col("volume").rolling_std(window_size=10) / (pl.col("volume").rolling_mean(window_size=10) + 1))
         .alias("volume_consistency"),
-        
+
         # TWAP/VWAP execution detection
-        ((pl.col("volume").rolling_std(20) / pl.col("volume").rolling_mean(20)) < 0.3)
+        ((pl.col("volume").rolling_std(window_size=20) / pl.col("volume").rolling_mean(window_size=20)) < 0.3)
         .alias("algo_execution_likely"),
     ])
     
     # Market maker participation
     df = df.with_columns([
         # Narrow range + high volume = MM accumulation/distribution
-        ((pl.col("high") - pl.col("low")) < pl.col("close").rolling_std(50) * 0.5) &
-        (pl.col("volume") > pl.col("volume").rolling_mean(50))
+        (((pl.col("high") - pl.col("low")) < pl.col("close").rolling_std(window_size=50) * 0.5) &
+        (pl.col("volume") > pl.col("volume").rolling_mean(window_size=50)))
         .alias("mm_participation"),
-        
+
         # Two-way market making (balanced volume)
         (1 / (1 + (pl.col("buy_sell_ratio") - 1).abs())).alias("mm_balance_score"),
     ])

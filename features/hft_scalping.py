@@ -115,19 +115,25 @@ def add_hft_scalping_features(df: pl.DataFrame, tick_data: Dict = None) -> pl.Da
     df = df.with_columns([
         # Volume acceleration (front-loaded vs back-loaded)
         pl.col("volume").diff().alias("volume_acceleration"),
-        
+
         # Volume-price correlation (strong moves have aligned volume)
-        pl.corr("volume", "close").rolling_mean(5).alias("volume_price_correlation"),
+        # Using rolling Pearson correlation formula
+        (((pl.col("volume") - pl.col("volume").rolling_mean(window_size=5)) *
+          (pl.col("close") - pl.col("close").rolling_mean(window_size=5)))
+         .rolling_mean(window_size=5) /
+         (pl.col("volume").rolling_std(window_size=5) *
+          pl.col("close").rolling_std(window_size=5) + 1e-8))
+        .alias("volume_price_correlation"),
     ])
     
     # Momentum burst detection
     df = df.with_columns([
         # Rapid price movement in last N seconds
         (pl.col("close") - pl.col("open")).abs().alias("price_movement"),
-        
+
         # Momentum relative to recent average
-        ((pl.col("close") - pl.col("open")).abs() / 
-         pl.col("close").rolling_std(20)).alias("relative_momentum"),
+        ((pl.col("close") - pl.col("open")).abs() /
+         pl.col("close").rolling_std(window_size=20)).alias("relative_momentum"),
     ])
     
     # Micro-reversal patterns
@@ -148,22 +154,22 @@ def add_hft_scalping_features(df: pl.DataFrame, tick_data: Dict = None) -> pl.Da
     df = df.with_columns([
         # Price speed (pips per second estimated)
         ((pl.col("high") - pl.col("low")) / 60).alias("price_speed_pps"),
-        
+
         # Speed change (acceleration)
         ((pl.col("high") - pl.col("low")) / 60).diff().alias("price_acceleration_pps"),
-        
+
         # Volatility burst
-        (pl.col("high") - pl.col("low")).rolling_quantile(0.95, window_size=60)
+        (pl.col("high") - pl.col("low")).rolling_quantile(quantile=0.95, window_size=60)
         .alias("volatility_95pct"),
     ])
     
     # Liquidity grab detection
     df = df.with_columns([
         # Quick spike beyond recent range
-        ((pl.col("high") > pl.col("high").shift(1).rolling_max(5)) & 
+        ((pl.col("high") > pl.col("high").shift(1).rolling_max(window_size=5)) &
          (pl.col("close") < pl.col("high"))).alias("liquidity_grab_high"),
-        
-        ((pl.col("low") < pl.col("low").shift(1).rolling_min(5)) & 
+
+        ((pl.col("low") < pl.col("low").shift(1).rolling_min(window_size=5)) &
          (pl.col("close") > pl.col("low"))).alias("liquidity_grab_low"),
     ])
     
@@ -171,12 +177,12 @@ def add_hft_scalping_features(df: pl.DataFrame, tick_data: Dict = None) -> pl.Da
     df = df.with_columns([
         # Narrow range with high volume (accumulation)
         (((pl.col("high") - pl.col("low")) < pl.col("close") * 0.0005) &
-        (pl.col("volume") > pl.col("volume").rolling_mean(20) * 1.5))
+        (pl.col("volume") > pl.col("volume").rolling_mean(window_size=20) * 1.5))
         .alias("mm_accumulation"),
 
         # Range expansion with volume (distribution)
-        (((pl.col("high") - pl.col("low")) > pl.col("close").rolling_std(20) * 2) &
-        (pl.col("volume") > pl.col("volume").rolling_mean(20) * 2))
+        (((pl.col("high") - pl.col("low")) > pl.col("close").rolling_std(window_size=20) * 2) &
+        (pl.col("volume") > pl.col("volume").rolling_mean(window_size=20) * 2))
         .alias("mm_distribution"),
     ])
     
@@ -185,16 +191,16 @@ def add_hft_scalping_features(df: pl.DataFrame, tick_data: Dict = None) -> pl.Da
         # Optimal entry zones based on micro-structure
         ((pl.col("close") - pl.col("low")) < (pl.col("high") - pl.col("low")) * 0.25)
         .alias("near_low_entry"),
-        
+
         ((pl.col("high") - pl.col("close")) < (pl.col("high") - pl.col("low")) * 0.25)
         .alias("near_high_entry"),
-        
+
         # Momentum continuation probability
         (pl.col("relative_momentum") > 2).alias("strong_momentum"),
-        
+
         # Mean reversion probability
-        ((pl.col("close") - pl.col("close").rolling_mean(5)).abs() > 
-         pl.col("close").rolling_std(20) * 2).alias("overextended"),
+        ((pl.col("close") - pl.col("close").rolling_mean(window_size=5)).abs() >
+         pl.col("close").rolling_std(window_size=20) * 2).alias("overextended"),
     ])
     
     # Risk metrics for scalping
@@ -236,11 +242,11 @@ def add_order_flow_features(df: pl.DataFrame, level2_data: Dict = None) -> pl.Da
     # Tape reading features
     df = df.with_columns([
         # Trade size distribution
-        pl.col("volume").rolling_quantile(0.9, window_size=20).alias("large_trade_threshold"),
-        
+        pl.col("volume").rolling_quantile(quantile=0.9, window_size=20).alias("large_trade_threshold"),
+
         # Aggressive buying/selling
-        (pl.col("close") > pl.col("open")).rolling_sum(5).alias("buying_pressure"),
-        (pl.col("close") < pl.col("open")).rolling_sum(5).alias("selling_pressure"),
+        (pl.col("close") > pl.col("open")).rolling_sum(window_size=5).alias("buying_pressure"),
+        (pl.col("close") < pl.col("open")).rolling_sum(window_size=5).alias("selling_pressure"),
     ])
     
     return df

@@ -45,8 +45,8 @@ def add_chaos_features(df: pl.DataFrame, embed_dim: int = 3, tau: int = 1) -> pl
     # Fractal dimension (measure of price roughness)
     df = df.with_columns([
         # Box-counting dimension approximation
-        ((pl.col("high") - pl.col("low")).log() / 
-         (pl.col("volume").log() + 1)).rolling_mean(20).alias("fractal_dimension"),
+        ((pl.col("high") - pl.col("low")).log() /
+         (pl.col("volume").log() + 1)).rolling_mean(window_size=20).alias("fractal_dimension"),
     ])
     
     # Phase space reconstruction (Takens embedding)
@@ -69,34 +69,46 @@ def add_chaos_features(df: pl.DataFrame, embed_dim: int = 3, tau: int = 1) -> pl
     ])
     
     # Recurrence features (how often system returns to similar states)
+    # Create shifted returns column for correlation calculation
+    df = df.with_columns([
+        pl.col("returns").shift(20).alias("_returns_lag20"),
+    ])
+
     df = df.with_columns([
         # Simple recurrence: price returns to similar level
-        ((pl.col("close") - pl.col("close").shift(20)).abs() < 
-         pl.col("close").rolling_std(20) * 0.1).alias("price_recurrence"),
-        
-        # Pattern recurrence: similar price patterns
-        pl.corr("returns", pl.col("returns").shift(20)).rolling_mean(10)
+        ((pl.col("close") - pl.col("close").shift(20)).abs() <
+         pl.col("close").rolling_std(window_size=20) * 0.1).alias("price_recurrence"),
+
+        # Pattern recurrence: rolling correlation between returns and lagged returns
+        # Using Pearson correlation formula: cov(x,y) / (std(x) * std(y))
+        (((pl.col("returns") - pl.col("returns").rolling_mean(window_size=10)) *
+          (pl.col("_returns_lag20") - pl.col("_returns_lag20").rolling_mean(window_size=10)))
+         .rolling_mean(window_size=10) /
+         (pl.col("returns").rolling_std(window_size=10) *
+          pl.col("_returns_lag20").rolling_std(window_size=10) + 1e-8))
         .alias("pattern_recurrence"),
     ])
+
+    df = df.drop("_returns_lag20")
     
     # Lyapunov-like features (sensitivity to initial conditions)
     df = df.with_columns([
         # Local divergence rate
-        (pl.col("returns").diff().abs() / 
-         (pl.col("returns").abs() + 1e-8)).rolling_mean(10)
+        (pl.col("returns").diff().abs() /
+         (pl.col("returns").abs() + 1e-8)).rolling_mean(window_size=10)
         .alias("local_lyapunov"),
-        
+
         # Trajectory divergence
-        (pl.col("close") - pl.col("close").shift(1)).abs().rolling_std(20)
+        (pl.col("close") - pl.col("close").shift(1)).abs().rolling_std(window_size=20)
         .alias("trajectory_divergence"),
     ])
     
     # Strange attractor features
     df = df.with_columns([
         # Distance from multiple moving averages (attractors)
-        ((pl.col("close") - pl.col("close").rolling_mean(10))**2 +
-         (pl.col("close") - pl.col("close").rolling_mean(20))**2 +
-         (pl.col("close") - pl.col("close").rolling_mean(50))**2).sqrt()
+        ((pl.col("close") - pl.col("close").rolling_mean(window_size=10))**2 +
+         (pl.col("close") - pl.col("close").rolling_mean(window_size=20))**2 +
+         (pl.col("close") - pl.col("close").rolling_mean(window_size=50))**2).sqrt()
         .alias("attractor_distance"),
     ])
 
@@ -111,29 +123,29 @@ def add_chaos_features(df: pl.DataFrame, embed_dim: int = 3, tau: int = 1) -> pl
         pl.col("returns").rolling_quantile(0.25, window_size=20).alias("q25"),
         pl.col("returns").rolling_quantile(0.75, window_size=20).alias("q75"),
     ])
-    
+
     df = df.with_columns([
         # Entropy proxy based on interquartile range
-        ((pl.col("q75") - pl.col("q25")) / 
-         (pl.col("returns").rolling_std(20) + 1e-8)).alias("entropy_ratio"),
+        ((pl.col("q75") - pl.col("q25")) /
+         (pl.col("returns").rolling_std(window_size=20) + 1e-8)).alias("entropy_ratio"),
     ])
     
     # Bifurcation indicators (system about to change behavior)
     df = df.with_columns([
         # Variance ratio test for regime change
-        (pl.col("returns").rolling_var(10) / 
-         (pl.col("returns").rolling_var(50) + 1e-8)).alias("variance_ratio"),
-        
+        (pl.col("returns").rolling_var(window_size=10) /
+         (pl.col("returns").rolling_var(window_size=50) + 1e-8)).alias("variance_ratio"),
+
         # Critical slowing down (precursor to bifurcation)
         pl.col("returns").rolling_quantile(0.5, window_size=20)
-        .diff().abs().rolling_mean(10).alias("critical_slowing"),
+        .diff().abs().rolling_mean(window_size=10).alias("critical_slowing"),
     ])
     
     # Deterministic vs stochastic behavior
     df = df.with_columns([
         # Approximate entropy (regularity measure)
-        (pl.col("returns").rolling_std(5) /
-        (pl.col("returns").rolling_std(20) + 1e-8))
+        (pl.col("returns").rolling_std(window_size=5) /
+        (pl.col("returns").rolling_std(window_size=20) + 1e-8))
         .alias("approximate_entropy"),
     ])
 
