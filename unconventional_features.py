@@ -262,7 +262,7 @@ class FeatureETLPipeline:
         self.batch_size = batch_size
         self.workers = workers
 
-        # Prometheus metrics
+        # Prometheus metrics (only in main process)
         self.gauge_processed = None
         self.counter_errors = None
         if PROM_AVAILABLE and os.getenv("ENABLE_PROMETHEUS", "false").lower() == "true":
@@ -270,11 +270,9 @@ class FeatureETLPipeline:
             self.counter_errors = prom.Counter('errors_total', 'Total errors')
             prom.start_http_server(8000)
 
-        # Create engines
+        # Create engine for main process only (for discovery queries)
+        # Worker processes will create their own engines
         self.read_eng = self._create_engine(self.forex_db)
-        self.write_eng = self._create_engine(self.target_db)
-
-        self.extractor = UnconventionalFeatureExtractor()
 
     def _create_engine(self, db: str, retries: int = 5):
         url = f"postgresql+psycopg://{self.user}:{self.password}@{self.host}:{self.port}/{db}"
@@ -282,15 +280,13 @@ class FeatureETLPipeline:
             try:
                 return create_engine(url, pool_pre_ping=True, pool_size=20, max_overflow=40)
             except OperationalError as e:
-                if self.counter_errors:
-                    self.counter_errors.inc()
                 log.error(f"DB connect fail (attempt {attempt+1}): {e}")
                 time.sleep(10)
         raise RuntimeError("DB connection failed")
 
-    def stream_table(self, table: str):
+    def stream_table(self, table: str, read_eng):
         """Stream data from source table in chunks."""
-        with self.read_eng.connect().execution_options(stream_results=True) as conn:
+        with read_eng.connect().execution_options(stream_results=True) as conn:
             for chunk in pd.read_sql(
                 text(f"SELECT * FROM {table} ORDER BY time"),
                 conn,
@@ -299,27 +295,32 @@ class FeatureETLPipeline:
                 yield chunk
 
     def process_and_write(self, asset: str, timeframe: str):
-        """Process a single asset/timeframe combination."""
+        """Process a single asset/timeframe combination.
+
+        Creates its own DB engines to work correctly in subprocess workers.
+        """
+        # Create engines inside the worker process
+        read_eng = self._create_engine(self.forex_db)
+        write_eng = self._create_engine(self.target_db)
+        extractor = UnconventionalFeatureExtractor()
+
         src_table = f"{asset.lower()}_{timeframe.lower()}_candles"
-        dst_table = f"unconventional.{asset.lower()}_{timeframe}_features"
+        dst_table = f"{asset.lower()}_{timeframe}_features"
 
         log.info(f"Processing {asset} {timeframe}")
 
-        for chunk in tqdm(self.stream_table(src_table), desc=f"{asset}_{timeframe}"):
+        for chunk in tqdm(self.stream_table(src_table, read_eng), desc=f"{asset}_{timeframe}"):
             try:
                 # Enrich
                 pl_df = pl.from_pandas(chunk)
-                enriched = self.extractor.enrich(pl_df, asset=asset, timeframe=timeframe)
+                enriched = extractor.enrich(pl_df, asset=asset, timeframe=timeframe)
                 enriched_pd = enriched.to_pandas()
-
-                if self.gauge_processed:
-                    self.gauge_processed.inc(len(chunk))
 
                 # Write
                 if not enriched_pd.empty:
                     enriched_pd.to_sql(
                         dst_table,
-                        self.write_eng,
+                        write_eng,
                         schema="unconventional",
                         if_exists="append",
                         index=False,
@@ -329,16 +330,29 @@ class FeatureETLPipeline:
                     log.info(f"Wrote {len(enriched_pd)} rows to {dst_table}")
 
             except Exception as e:
-                if self.counter_errors:
-                    self.counter_errors.inc()
                 log.error(f"Processing error: {e}")
+
+        # Clean up engines
+        read_eng.dispose()
+        write_eng.dispose()
 
     def run(self, assets: List[str] = None, timeframes: List[str] = None):
         """Run the full ETL pipeline."""
         if assets is None:
+            # Derive assets from existing candle tables (e.g., eurusd_h1_candles -> EURUSD)
             with self.read_eng.connect() as conn:
-                result = conn.execute(text("SELECT DISTINCT instrument FROM instruments"))
-                assets = [r[0] for r in result]
+                result = conn.execute(text(
+                    "SELECT DISTINCT table_name FROM information_schema.tables "
+                    "WHERE table_schema = 'public' AND table_name LIKE '%_candles'"
+                ))
+                # Extract asset names from table names (e.g., eurusd_h1_candles -> EURUSD)
+                assets = set()
+                for (table_name,) in result:
+                    # Split by underscore, take everything before the timeframe
+                    parts = table_name.replace('_candles', '').rsplit('_', 1)
+                    if len(parts) >= 1:
+                        assets.add(parts[0].upper())
+                assets = list(assets)
 
         if timeframes is None:
             timeframes = ["S5", "S10", "S15", "S30", "M1", "M2", "M4", "M5", "M10", "M15", "M30",
