@@ -150,13 +150,13 @@ def run_full_pipeline(
     X_processed = processor.handle_missing_values(X)
 
     # Scale features
-    X_scaled, scaler = processor.scale_features(X_processed)
+    X_scaled = processor.scale_features(X_processed)
 
     # Select features
     selection_result = processor.select_features(
         X_scaled, y,
-        method=feature_selection,
-        max_features=max_features,
+        importance_method=feature_selection,
+        top_n=max_features,
     )
 
     # Filter to selected features
