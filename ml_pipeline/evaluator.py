@@ -21,6 +21,18 @@ from .model_trainer import TrainingResult, ModelMetrics
 log = logging.getLogger(__name__)
 
 
+class NumpyEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles numpy types."""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
+
 @dataclass
 class FeatureAnalysis:
     """Analysis of feature importance and contribution."""
@@ -457,7 +469,7 @@ class Evaluator:
         }
 
         with open(filepath, 'w') as f:
-            json.dump(data, f, indent=2)
+            json.dump(data, f, indent=2, cls=NumpyEncoder)
 
     def _save_html(self, report: EvaluationReport, filepath: str):
         """Save report as HTML."""
